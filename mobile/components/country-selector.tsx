@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Modal, StyleSheet, TouchableOpacity, FlatList, View } from 'react-native';
 import { ThemedInput } from './themed-input';
 import { ThemedText } from './themed-text';
@@ -7,56 +7,65 @@ import { Ionicons } from '@expo/vector-icons';
 import citiesData from '../data/cities.json';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
-type City = {
-  id: string;
+type Country = {
   name: string;
-  country: string;
-  code: string;
-  currency: string;
+  code: string; // ISO code e.g. AE
+  dialCode: string; // e.g. +971
 };
 
 type Props = {
-  value: string;
-  onChange: (value: string) => void;
-  onSelectCity?: (city: City) => void;
-  placeholder?: string;
+  value: Country;
+  onChange: (country: Country) => void;
 };
 
-export function CitySelector({ value, onChange, onSelectCity, placeholder }: Props) {
+export function CountrySelector({ value, onChange }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [search, setSearch] = useState('');
   
   const backgroundColor = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'icon');
-  const textColor = useThemeColor({}, 'text');
 
-  const filteredCities = citiesData.filter((city) =>
-    city.name.toLowerCase().includes(search.toLowerCase()) ||
-    city.code.toLowerCase().includes(search.toLowerCase()) ||
-    city.country.toLowerCase().includes(search.toLowerCase()) ||
-    (city.currency && city.currency.toLowerCase().includes(search.toLowerCase()))
+  // Extract unique countries from citiesData
+  const uniqueCountries = useMemo(() => {
+    const countryMap = new Map<string, Country>();
+    
+    citiesData.forEach((city: any) => {
+      // Ensure we have necessary fields (some old entries might miss them if script failed or partial data)
+      // But we just updated all of them.
+      if (city.country && city.countryCode && city.dialCode && !countryMap.has(city.countryCode)) {
+        countryMap.set(city.countryCode, {
+          name: city.country,
+          code: city.countryCode,
+          dialCode: city.dialCode
+        });
+      }
+    });
+    
+    return Array.from(countryMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
+
+  const filteredCountries = uniqueCountries.filter((country) =>
+    country.name.toLowerCase().includes(search.toLowerCase()) ||
+    country.code.toLowerCase().includes(search.toLowerCase()) ||
+    country.dialCode.includes(search)
   );
 
-  const handleSelect = (city: City) => {
-    onChange(city.name);
-    if (onSelectCity) {
-      onSelectCity(city);
-    }
+  const handleSelect = (country: Country) => {
+    onChange(country);
     setModalVisible(false);
     setSearch('');
   };
 
   const handleOpen = () => {
-    console.log('CitySelector: handleOpen called');
     setModalVisible(true);
   };
 
   return (
     <>
       <ThemedInput
-        value={value}
+        value={`${value.name} (${value.dialCode})`}
         onChangeText={() => {}}
-        placeholder={placeholder || 'Select City'}
+        placeholder="Select Country"
         onPress={handleOpen}
       />
 
@@ -70,7 +79,7 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#007AFF" />
             </TouchableOpacity>
-            <ThemedText type="subtitle">Select City</ThemedText>
+            <ThemedText type="subtitle">Select Country</ThemedText>
             <View style={{ width: 24 }} />
           </View>
 
@@ -78,24 +87,24 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
             <ThemedInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search city, country or code"
+              placeholder="Search country or code"
               autoFocus
             />
           </View>
 
           <FlatList
-            data={filteredCities}
-            keyExtractor={(item) => item.id}
+            data={filteredCountries}
+            keyExtractor={(item) => item.code}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.item}
                 onPress={() => handleSelect(item)}
               >
                 <View>
-                <ThemedText type="defaultSemiBold">{item.name} ({item.code}) - {item.currency}</ThemedText>
-                <ThemedText style={[styles.country, { color: borderColor }]}>{item.country}</ThemedText>
-              </View>
-                {value === item.name && (
+                  <ThemedText type="defaultSemiBold">{item.name} ({item.code})</ThemedText>
+                  <ThemedText style={{ color: '#666' }}>{item.dialCode}</ThemedText>
+                </View>
+                {value.code === item.code && (
                   <Ionicons name="checkmark" size={20} color="#007AFF" />
                 )}
               </TouchableOpacity>
@@ -112,13 +121,14 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    paddingTop: 20,
+    paddingTop: 50,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
   },
   closeButton: {
@@ -129,16 +139,14 @@ const styles = StyleSheet.create({
   },
   item: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-  },
-  country: {
-    fontSize: 12,
-    marginTop: 2,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   separator: {
     height: 1,
     marginLeft: 16,
+    opacity: 0.2,
   },
 });

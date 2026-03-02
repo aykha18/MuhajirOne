@@ -6,6 +6,8 @@ import { ThemedButton } from '@/components/themed-button';
 import { ThemedInput } from '@/components/themed-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { CitySelector } from '@/components/city-selector';
+import { CurrencySelector } from '@/components/currency-selector';
 import { apiClient } from '@/api/client';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -499,15 +501,15 @@ export default function CurrencyScreen() {
           <ThemedText type="subtitle">New Post</ThemedText>
           {createError && <ThemedText style={{ color: 'red' }}>{createError}</ThemedText>}
           
-          <ThemedInput
+          <CurrencySelector
             placeholder="Have (e.g. USD)"
             value={haveCurrency}
-            onChangeText={setHaveCurrency}
+            onChange={setHaveCurrency}
           />
-          <ThemedInput
+          <CurrencySelector
             placeholder="Need (e.g. TRY)"
             value={needCurrency}
-            onChangeText={setNeedCurrency}
+            onChange={setNeedCurrency}
           />
           <ThemedInput
             placeholder="Amount"
@@ -521,10 +523,15 @@ export default function CurrencyScreen() {
             value={preferredRate}
             onChangeText={setPreferredRate}
           />
-          <ThemedInput
+          <CitySelector
             placeholder="City"
             value={city}
-            onChangeText={setCity}
+            onChange={setCity}
+            onSelectCity={(item) => {
+              if (!haveCurrency) {
+                setHaveCurrency(item.currency);
+              }
+            }}
           />
           
           <ThemedButton

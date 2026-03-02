@@ -47,15 +47,9 @@ export default function RootLayout() {
     return null;
   }
 
-  if (!isConnected) {
-    return (
-      <>
-        <BackendStatus onConnected={() => setIsConnected(true)} />
-        <StatusBar style="auto" />
-      </>
-    );
-  }
-
+  // Non-blocking status check: render UI immediately
+  // If disconnected, BackendStatus can be shown as a banner inside screens if needed
+  
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>

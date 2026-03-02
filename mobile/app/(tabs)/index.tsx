@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { apiClient } from '@/api/client';
-import { PHONE_COUNTRIES } from '@/constants/phone';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedButton } from '@/components/themed-button';
 import { ThemedInput } from '@/components/themed-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { CountrySelector } from '@/components/country-selector';
 
 export default function HomeScreen() {
-  const [countryIndex, setCountryIndex] = useState(0);
+  const [country, setCountry] = useState({ name: 'United Arab Emirates', code: 'AE', dialCode: '+971' });
   const [localPhone, setLocalPhone] = useState('');
   const [code, setCode] = useState('');
   const [me, setMe] = useState<unknown>(null);
@@ -23,7 +23,6 @@ export default function HomeScreen() {
     setBusy(true);
     setError(null);
     try {
-      const country = PHONE_COUNTRIES[countryIndex];
       const fullNumber = `${country.dialCode}${localPhone}`;
       const result = await apiClient.requestOtp({ phoneNumber: fullNumber });
       setLastOtp(result.code);
@@ -38,7 +37,6 @@ export default function HomeScreen() {
     setBusy(true);
     setError(null);
     try {
-      const country = PHONE_COUNTRIES[countryIndex];
       const fullNumber = `${country.dialCode}${localPhone}`;
       await apiClient.verifyOtp({
         phoneNumber: fullNumber,
@@ -81,12 +79,9 @@ export default function HomeScreen() {
           <>
             <ThemedText type="subtitle">Auth demo</ThemedText>
             <View style={[styles.row, styles.countryRow]}>
-              <ThemedButton
-                title={`${PHONE_COUNTRIES[countryIndex].name} (${PHONE_COUNTRIES[countryIndex].dialCode})`}
-                variant="secondary"
-                onPress={() =>
-                  setCountryIndex((countryIndex + 1) % PHONE_COUNTRIES.length)
-                }
+              <CountrySelector
+                value={country}
+                onChange={setCountry}
               />
             </View>
             <View style={styles.row}>

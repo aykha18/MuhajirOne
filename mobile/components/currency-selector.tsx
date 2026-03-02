@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Modal, StyleSheet, TouchableOpacity, FlatList, View } from 'react-native';
 import { ThemedInput } from './themed-input';
 import { ThemedText } from './themed-text';
@@ -7,47 +7,52 @@ import { Ionicons } from '@expo/vector-icons';
 import citiesData from '../data/cities.json';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
-type City = {
-  id: string;
-  name: string;
-  country: string;
+type Currency = {
   code: string;
-  currency: string;
+  name?: string;
+  symbol?: string;
 };
 
 type Props = {
   value: string;
   onChange: (value: string) => void;
-  onSelectCity?: (city: City) => void;
   placeholder?: string;
 };
 
-export function CitySelector({ value, onChange, onSelectCity, placeholder }: Props) {
+export function CurrencySelector({ value, onChange, placeholder }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [search, setSearch] = useState('');
   
   const backgroundColor = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'icon');
-  const textColor = useThemeColor({}, 'text');
 
-  const filteredCities = citiesData.filter((city) =>
-    city.name.toLowerCase().includes(search.toLowerCase()) ||
-    city.code.toLowerCase().includes(search.toLowerCase()) ||
-    city.country.toLowerCase().includes(search.toLowerCase()) ||
-    (city.currency && city.currency.toLowerCase().includes(search.toLowerCase()))
+  // Extract unique currencies from citiesData
+  const uniqueCurrencies = useMemo(() => {
+    const currencyMap = new Map<string, Currency>();
+    
+    citiesData.forEach(city => {
+      if (city.currency && !currencyMap.has(city.currency)) {
+        currencyMap.set(city.currency, {
+          code: city.currency,
+          // We can try to infer symbol or name if we had a map, for now just code
+        });
+      }
+    });
+    
+    return Array.from(currencyMap.values()).sort((a, b) => a.code.localeCompare(b.code));
+  }, []);
+
+  const filteredCurrencies = uniqueCurrencies.filter((currency) =>
+    currency.code.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSelect = (city: City) => {
-    onChange(city.name);
-    if (onSelectCity) {
-      onSelectCity(city);
-    }
+  const handleSelect = (currency: Currency) => {
+    onChange(currency.code);
     setModalVisible(false);
     setSearch('');
   };
 
   const handleOpen = () => {
-    console.log('CitySelector: handleOpen called');
     setModalVisible(true);
   };
 
@@ -56,7 +61,7 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
       <ThemedInput
         value={value}
         onChangeText={() => {}}
-        placeholder={placeholder || 'Select City'}
+        placeholder={placeholder || 'Select Currency'}
         onPress={handleOpen}
       />
 
@@ -70,7 +75,7 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#007AFF" />
             </TouchableOpacity>
-            <ThemedText type="subtitle">Select City</ThemedText>
+            <ThemedText type="subtitle">Select Currency</ThemedText>
             <View style={{ width: 24 }} />
           </View>
 
@@ -78,24 +83,23 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
             <ThemedInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search city, country or code"
+              placeholder="Search currency code"
               autoFocus
             />
           </View>
 
           <FlatList
-            data={filteredCities}
-            keyExtractor={(item) => item.id}
+            data={filteredCurrencies}
+            keyExtractor={(item) => item.code}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.item}
                 onPress={() => handleSelect(item)}
               >
                 <View>
-                <ThemedText type="defaultSemiBold">{item.name} ({item.code}) - {item.currency}</ThemedText>
-                <ThemedText style={[styles.country, { color: borderColor }]}>{item.country}</ThemedText>
-              </View>
-                {value === item.name && (
+                  <ThemedText type="defaultSemiBold">{item.code}</ThemedText>
+                </View>
+                {value === item.code && (
                   <Ionicons name="checkmark" size={20} color="#007AFF" />
                 )}
               </TouchableOpacity>
@@ -112,13 +116,14 @@ export function CitySelector({ value, onChange, onSelectCity, placeholder }: Pro
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    paddingTop: 20,
+    paddingTop: 50,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     borderBottomWidth: 1,
   },
   closeButton: {
@@ -129,16 +134,14 @@ const styles = StyleSheet.create({
   },
   item: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-  },
-  country: {
-    fontSize: 12,
-    marginTop: 2,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   separator: {
     height: 1,
     marginLeft: 16,
+    opacity: 0.2,
   },
 });
