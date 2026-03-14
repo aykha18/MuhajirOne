@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as Linking from 'expo-linking';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { apiClient } from '@/api/client';
 import { ThemedButton } from '@/components/themed-button';
@@ -12,6 +12,7 @@ export default function OAuthRedirect() {
   const handledRef = useRef(false);
   const [message, setMessage] = useState<string>('Completing sign-in…');
   const [error, setError] = useState<string | null>(null);
+  const localParams = useLocalSearchParams<Record<string, string | string[]>>();
 
   useEffect(() => {
     if (handledRef.current) {
@@ -34,16 +35,50 @@ export default function OAuthRedirect() {
       return out;
     };
 
+    const getRedirectUrl = async (): Promise<string | null> => {
+      const initial = await Linking.getInitialURL();
+      if (initial) {
+        return initial;
+      }
+
+      return await new Promise((resolve) => {
+        const subscription = Linking.addEventListener('url', (event) => {
+          subscription.remove();
+          resolve(event.url ?? null);
+        });
+
+        setTimeout(() => {
+          subscription.remove();
+          resolve(null);
+        }, 4000);
+      });
+    };
+
     const complete = async () => {
       try {
-        const url = await Linking.getInitialURL();
-        if (!url) {
-          setError('Missing redirect URL');
-          setMessage('Sign-in did not complete');
-          return;
+        const params = new URLSearchParams();
+        Object.entries(localParams ?? {}).forEach(([key, value]) => {
+          if (Array.isArray(value)) {
+            if (value.length > 0) {
+              params.set(key, String(value[0]));
+            }
+            return;
+          }
+          if (typeof value === 'string') {
+            params.set(key, value);
+          }
+        });
+
+        if (params.keys().next().done) {
+          const url = await getRedirectUrl();
+          if (!url) {
+            setError('Missing redirect URL');
+            setMessage('Sign-in did not complete');
+            return;
+          }
+          parseParams(url).forEach((value, key) => params.set(key, value));
         }
 
-        const params = parseParams(url);
         const googleError = params.get('error');
         if (googleError) {
           const description = params.get('error_description');
