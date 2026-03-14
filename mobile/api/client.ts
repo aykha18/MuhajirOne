@@ -538,7 +538,11 @@ export class ApiClient {
   }
 }
 
-const extra = (Constants?.expoConfig?.extra ?? {}) as any;
+const extra = ((Constants as any)?.expoConfig?.extra ??
+  (Constants as any)?.easConfig?.extra ??
+  (Constants as any)?.manifest?.extra ??
+  (Constants as any)?.manifest2?.extra ??
+  {}) as any;
 const configuredApiUrl =
   extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL || undefined;
 

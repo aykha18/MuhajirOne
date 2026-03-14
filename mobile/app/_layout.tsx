@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as WebBrowser from 'expo-web-browser';
 import 'react-native-reanimated';
 import { Alert } from 'react-native';
 
@@ -13,6 +14,8 @@ import { BackendStatus } from '@/components/backend-status';
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+WebBrowser.maybeCompleteAuthSession();
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();

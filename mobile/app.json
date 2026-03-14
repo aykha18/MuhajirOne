@@ -14,6 +14,21 @@
     },
     "android": {
       "package": "com.muhajirone.mobile",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "com.googleusercontent.apps.237236012926-8emq8oamq5ivubqr40a4gro9o87jd933",
+              "pathPrefix": "/oauthredirect"
+            }
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

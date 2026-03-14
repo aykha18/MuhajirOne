@@ -96,18 +96,29 @@ function GoogleSignInEnabled({
   useProxy: boolean;
 }) {
   const isWeb = Platform.OS === 'web';
+  const googleNativeScheme =
+    typeof androidClientId === 'string' && androidClientId.includes('.apps.googleusercontent.com')
+      ? `com.googleusercontent.apps.${androidClientId.replace(
+          '.apps.googleusercontent.com',
+          '',
+        )}`
+      : undefined;
   const redirectUri = isWeb
     ? AuthSession.makeRedirectUri({ path: 'auth/callback' })
-    : AuthSession.makeRedirectUri({ scheme: 'mobile', useProxy });
+    : useProxy
+      ? AuthSession.makeRedirectUri({ useProxy: true })
+      : AuthSession.makeRedirectUri({
+          native: `${googleNativeScheme ?? 'mobile'}:/oauthredirect`,
+        });
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId,
     iosClientId,
     webClientId,
     expoClientId: isWeb || !useProxy ? undefined : expoClientId,
     redirectUri,
-    responseType: AuthSession.ResponseType.IdToken,
     scopes: ['openid', 'profile', 'email'],
+    selectAccount: true,
   });
 
   useEffect(() => {
@@ -164,7 +175,11 @@ export default function HomeScreen() {
   const [loggedInPhone, setLoggedInPhone] = useState<string | null>(null);
   const [otpSent, setOtpSent] = useState(false);
 
-  const extra = (Constants?.expoConfig?.extra ?? {}) as any;
+  const extra = ((Constants as any)?.expoConfig?.extra ??
+    (Constants as any)?.easConfig?.extra ??
+    (Constants as any)?.manifest?.extra ??
+    (Constants as any)?.manifest2?.extra ??
+    {}) as any;
   const googleExtra = extra?.google ?? {};
   const webClientId =
     googleExtra.webClientId ||

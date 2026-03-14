@@ -31,6 +31,17 @@ export class AuthService {
     this.googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
   }
 
+  private getGoogleAudiences(): string[] {
+    const raw = [
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+    ];
+    return raw.filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+  }
+
   async requestOtp(dto: RequestOtpDto): Promise<{ message: string }> {
     const code = this.generateCode();
     const hash = this.hashCode(code);
@@ -54,9 +65,13 @@ export class AuthService {
 
   async verifyGoogleToken(dto: GoogleLoginDto): Promise<AuthTokens> {
     try {
+      const audiences = this.getGoogleAudiences();
+      if (audiences.length === 0) {
+        throw new Error('Google OAuth client IDs are not configured');
+      }
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.token,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: audiences.length === 1 ? audiences[0] : audiences,
       });
       const payload = ticket.getPayload();
 
