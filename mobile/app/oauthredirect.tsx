@@ -58,6 +58,7 @@ export default function OAuthRedirect() {
     const complete = async () => {
       try {
         const params = new URLSearchParams();
+        let chosenUrl: string | null = null;
         Object.entries(localParams ?? {}).forEach(([key, value]) => {
           if (Array.isArray(value)) {
             if (value.length > 0) {
@@ -74,6 +75,7 @@ export default function OAuthRedirect() {
           const url = await getRedirectUrl();
           const storedUrl = await AsyncStorage.getItem('muhajirone_last_url');
           const chosen = url ?? storedUrl ?? null;
+          chosenUrl = chosen;
           if (!chosen) {
             setError('Missing redirect URL');
             setMessage('Sign-in did not complete');
@@ -92,7 +94,25 @@ export default function OAuthRedirect() {
         }
 
         const idTokenFromRedirect = params.get('id_token');
-        const code = params.get('code');
+        let code = params.get('code');
+        if (!code && params.has('code') && chosenUrl) {
+          const parsed = Linking.parse(chosenUrl);
+          const fromLinking = (parsed?.queryParams as any)?.code;
+          if (typeof fromLinking === 'string' && fromLinking.length > 0) {
+            code = fromLinking;
+          } else {
+            const match = chosenUrl.match(/[?#&]code=([^&#]+)/);
+            if (match && typeof match[1] === 'string') {
+              try {
+                const decoded = decodeURIComponent(match[1]);
+                if (decoded.length > 0) {
+                  code = decoded;
+                }
+              } catch {
+              }
+            }
+          }
+        }
 
         let idToken = idTokenFromRedirect;
         if (!idToken && code) {
