@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { apiClient } from '@/api/client';
 import { ThemedButton } from '@/components/themed-button';
@@ -71,12 +72,15 @@ export default function OAuthRedirect() {
 
         if (params.keys().next().done) {
           const url = await getRedirectUrl();
-          if (!url) {
+          const storedUrl = await AsyncStorage.getItem('muhajirone_last_url');
+          const chosen = url ?? storedUrl ?? null;
+          if (!chosen) {
             setError('Missing redirect URL');
             setMessage('Sign-in did not complete');
             return;
           }
-          parseParams(url).forEach((value, key) => params.set(key, value));
+          parseParams(chosen).forEach((value, key) => params.set(key, value));
+          await AsyncStorage.removeItem('muhajirone_last_url');
         }
 
         const googleError = params.get('error');
@@ -87,10 +91,62 @@ export default function OAuthRedirect() {
           return;
         }
 
-        const idToken = params.get('id_token');
+        const idTokenFromRedirect = params.get('id_token');
+        const code = params.get('code');
+
+        let idToken = idTokenFromRedirect;
+        if (!idToken && code) {
+          const raw = await AsyncStorage.getItem('muhajirone_google_oauth');
+          const stored = raw ? (JSON.parse(raw) as any) : null;
+          const clientId = stored?.clientId as string | undefined;
+          const redirectUri = stored?.redirectUri as string | undefined;
+          const codeVerifier = stored?.codeVerifier as string | null | undefined;
+
+          if (!clientId || !redirectUri) {
+            setError('Missing stored OAuth context (clientId/redirectUri). Please try again from the Sign In screen.');
+            setMessage('Sign-in did not complete');
+            return;
+          }
+
+          const body = new URLSearchParams();
+          body.set('grant_type', 'authorization_code');
+          body.set('code', code);
+          body.set('client_id', clientId);
+          body.set('redirect_uri', redirectUri);
+          if (typeof codeVerifier === 'string' && codeVerifier.length > 0) {
+            body.set('code_verifier', codeVerifier);
+          }
+
+          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+          });
+          const tokenJson = (await tokenResponse.json().catch(() => ({}))) as any;
+          const exchangedIdToken = tokenJson?.id_token as string | undefined;
+          if (!exchangedIdToken) {
+            const details =
+              typeof tokenJson?.error_description === 'string'
+                ? tokenJson.error_description
+                : typeof tokenJson?.error === 'string'
+                  ? tokenJson.error
+                  : `status ${tokenResponse.status}`;
+            setError(`Failed to exchange auth code for id_token (${details})`);
+            setMessage('Sign-in did not complete');
+            return;
+          }
+          idToken = exchangedIdToken;
+          await AsyncStorage.removeItem('muhajirone_google_oauth');
+        }
+
         if (!idToken) {
           const keys = Array.from(params.keys()).join(', ');
-          setError(`Google redirect missing id_token. Keys: ${keys || '(none)'}`);
+          setError(
+            `Google redirect missing id_token. Response keys: ${keys || '(none)'}`,
+          );
           setMessage('Sign-in did not complete');
           return;
         }

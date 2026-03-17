@@ -5,6 +5,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 import * as Google from 'expo-auth-session/providers/google';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient, User } from '@/api/client';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedButton } from '@/components/themed-button';
@@ -146,12 +147,35 @@ function GoogleSignInEnabled({
       <View style={styles.row}>
         <ThemedButton
           title="Sign in with Google"
-          onPress={() => {
+          onPress={async () => {
             if (!request) {
               onError(
                 'Google Sign-In is not ready. Double-check google.androidClientId in app.json or EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID in EAS, then rebuild the APK.',
               );
               return;
+            }
+            const isAndroid = Platform.OS === 'android';
+            const isIos = Platform.OS === 'ios';
+            const clientId = isWeb
+              ? webClientId
+              : useProxy
+                ? expoClientId ?? webClientId ?? androidClientId ?? iosClientId
+                : isAndroid
+                  ? androidClientId
+                  : isIos
+                    ? iosClientId
+                    : webClientId;
+            try {
+              await AsyncStorage.setItem(
+                'muhajirone_google_oauth',
+                JSON.stringify({
+                  redirectUri,
+                  clientId,
+                  codeVerifier: (request as any)?.codeVerifier ?? null,
+                  createdAt: new Date().toISOString(),
+                }),
+              );
+            } catch {
             }
             promptAsync({ useProxy });
           }}

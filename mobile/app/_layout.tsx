@@ -6,6 +6,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as WebBrowser from 'expo-web-browser';
 import 'react-native-reanimated';
 import { Alert } from 'react-native';
+import * as Linking from 'expo-linking';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { apiClient } from '@/api/client';
@@ -44,6 +46,31 @@ export default function RootLayout() {
     }
 
     prepare();
+  }, []);
+
+  useEffect(() => {
+    const store = async (url: string) => {
+      try {
+        await AsyncStorage.setItem('muhajirone_last_url', url);
+      } catch {
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', (event) => {
+      if (event.url) {
+        store(event.url);
+      }
+    });
+
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        store(url);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   if (!appIsReady) {
