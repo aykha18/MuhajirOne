@@ -175,7 +175,8 @@ function GoogleSignInEnabled({
                   createdAt: new Date().toISOString(),
                 }),
               );
-            } catch {
+            } catch (e) {
+              console.error('Failed to save oauth state', e);
             }
             promptAsync({ useProxy });
           }}

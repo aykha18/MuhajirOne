@@ -140,12 +140,17 @@ export default function OAuthRedirect() {
           const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
             method: 'POST',
             headers: {
-              Accept: 'application/json',
               'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: body.toString(),
           });
-          const tokenJson = (await tokenResponse.json().catch(() => ({}))) as any;
+          const responseText = await tokenResponse.text();
+          let tokenJson: any = {};
+          try {
+            tokenJson = JSON.parse(responseText);
+          } catch (e) {
+            console.error('Failed to parse token response:', responseText);
+          }
           const exchangedIdToken = tokenJson?.id_token as string | undefined;
           if (!exchangedIdToken) {
             const details =
@@ -153,7 +158,7 @@ export default function OAuthRedirect() {
                 ? tokenJson.error_description
                 : typeof tokenJson?.error === 'string'
                   ? tokenJson.error
-                  : `status ${tokenResponse.status}`;
+                  : `status ${tokenResponse.status} - ${responseText.substring(0, 100)}`;
             setError(`Failed to exchange auth code for id_token (${details})`);
             setMessage('Sign-in did not complete');
             return;
