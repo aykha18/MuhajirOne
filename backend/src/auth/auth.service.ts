@@ -69,9 +69,12 @@ export class AuthService {
       if (audiences.length === 0) {
         throw new Error('Google OAuth client IDs are not configured');
       }
+      
+      this.logger.log(`Verifying Google Token with audiences: ${audiences.join(', ')}`);
+      
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.token,
-        audience: audiences.length === 1 ? audiences[0] : audiences,
+        audience: audiences,
       });
       const payload = ticket.getPayload();
 
@@ -135,7 +138,10 @@ export class AuthService {
 
       return this.issueTokens(user.id, user.phoneNumber);
     } catch (error) {
-      this.logger.error(`Google Verify Error: ${error}`);
+      this.logger.error(`Google Verify Error details:`, error);
+      if (error instanceof Error) {
+          this.logger.error(`Error message: ${error.message}`);
+      }
       throw new UnauthorizedException('Invalid Google Token');
     }
   }
