@@ -185,7 +185,6 @@ function GoogleSignInEnabled({
           variant="secondary"
         />
       </View>
-      <ThemedText numberOfLines={2}>Redirect URI: {redirectUri}</ThemedText>
     </>
   );
 }
