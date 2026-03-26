@@ -149,7 +149,7 @@ export default function OAuthRedirect() {
           try {
             tokenJson = JSON.parse(responseText);
           } catch (e) {
-            console.error('Failed to parse token response:', responseText);
+            // console.error('Failed to parse token response:', responseText);
           }
           const exchangedIdToken = tokenJson?.id_token as string | undefined;
           if (!exchangedIdToken) {

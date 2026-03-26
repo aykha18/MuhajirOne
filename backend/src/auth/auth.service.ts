@@ -70,7 +70,7 @@ export class AuthService {
         throw new Error('Google OAuth client IDs are not configured');
       }
       
-      this.logger.log(`Verifying Google Token with audiences: ${audiences.join(', ')}`);
+      // this.logger.log(`Verifying Google Token with audiences: ${audiences.join(', ')}`);
       
       const ticket = await this.googleClient.verifyIdToken({
         idToken: dto.token,
@@ -138,7 +138,7 @@ export class AuthService {
 
       return this.issueTokens(user.id, user.phoneNumber);
     } catch (error) {
-      this.logger.error(`Google Verify Error details:`, error);
+      // this.logger.error(`Google Verify Error details:`, error);
       const msg = error instanceof Error ? error.message : 'Unknown error';
       throw new UnauthorizedException(`Google Token Error: ${msg}`);
     }
