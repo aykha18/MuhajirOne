@@ -28,6 +28,12 @@ export type VerifyOtpPayload = {
   deviceFingerprint: string;
 };
 
+export type LinkPhonePayload = {
+  phoneNumber: string;
+  code: string;
+  deviceFingerprint?: string;
+};
+
 export type RefreshTokenPayload = {
   refreshToken: string;
 };
@@ -247,6 +253,12 @@ export class ApiClient {
 
   async googleLogin(token: string, deviceFingerprint: string): Promise<AuthTokens> {
     const tokens = await this.post<AuthTokens>('/auth/google-login', { token, deviceFingerprint }, false);
+    await this.setTokens(tokens);
+    return tokens;
+  }
+
+  async linkPhone(payload: LinkPhonePayload): Promise<AuthTokens> {
+    const tokens = await this.post<AuthTokens>('/auth/link-phone', payload, true);
     await this.setTokens(tokens);
     return tokens;
   }

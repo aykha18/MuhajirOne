@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes, createHash } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
@@ -8,6 +13,7 @@ import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { LinkPhoneDto } from './dto/link-phone.dto';
 
 type JwtPayload = {
   sub: string;
@@ -240,6 +246,82 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
     return this.issueTokens(stored.userId, stored.user.phoneNumber);
+  }
+
+  async linkPhone(userId: string, dto: LinkPhoneDto): Promise<AuthTokens> {
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, verificationLevel: true },
+    });
+    if (!currentUser) {
+      throw new UnauthorizedException('Invalid user');
+    }
+
+    const otpRecord = await this.prisma.otpRequest.findFirst({
+      where: {
+        phoneNumber: dto.phoneNumber,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!otpRecord) {
+      throw new UnauthorizedException('Invalid code');
+    }
+    const hash = this.hashCode(dto.code);
+    if (otpRecord.codeHash !== hash) {
+      await this.prisma.otpRequest.update({
+        where: { id: otpRecord.id },
+        data: { attempts: otpRecord.attempts + 1 },
+      });
+      throw new UnauthorizedException('Invalid code');
+    }
+    await this.prisma.otpRequest.update({
+      where: { id: otpRecord.id },
+      data: { consumedAt: new Date() },
+    });
+
+    const existingByPhone = await this.prisma.user.findUnique({
+      where: { phoneNumber: dto.phoneNumber },
+      select: { id: true },
+    });
+    if (existingByPhone && existingByPhone.id !== userId) {
+      throw new BadRequestException('Phone number already in use');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        phoneNumber: dto.phoneNumber,
+        verificationLevel: { set: Math.max(currentUser.verificationLevel, 1) },
+      },
+    });
+
+    const deviceFingerprint = (dto.deviceFingerprint ?? '').trim();
+    if (deviceFingerprint.length > 0) {
+      const existingDevice = await this.prisma.userDevice.findFirst({
+        where: {
+          userId: updatedUser.id,
+          fingerprint: deviceFingerprint,
+        },
+      });
+      if (existingDevice) {
+        await this.prisma.userDevice.update({
+          where: { id: existingDevice.id },
+          data: { lastSeenAt: new Date() },
+        });
+      } else {
+        await this.prisma.userDevice.create({
+          data: {
+            userId: updatedUser.id,
+            fingerprint: deviceFingerprint,
+          },
+        });
+      }
+    }
+
+    await this.trustService.recalculateForUser(updatedUser.id);
+    return this.issueTokens(updatedUser.id, updatedUser.phoneNumber);
   }
 
   private async issueTokens(
