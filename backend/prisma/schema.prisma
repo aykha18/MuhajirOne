@@ -34,6 +34,7 @@ model User {
   disputesResolved   Dispute[]              @relation("DisputesResolvedBy")
   verificationDocuments VerificationDocument[]
   reviewedVerificationDocuments VerificationDocument[] @relation("VerificationDocumentsReviewedBy")
+  featureVotes      FeatureVote[]
   userDevices        UserDevice[]
   refreshTokens      RefreshToken[]
   stateChangeLogs    StateChangeLog[]       @relation("ChangedByUser")
@@ -64,6 +65,33 @@ model VerificationDocument {
 
   @@index([userId])
   @@index([status])
+}
+
+model FeatureIdea {
+  id               String        @id @default(uuid())
+  slug             String        @unique
+  title            String
+  shortDescription String
+  longDescription  String
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  votes            FeatureVote[]
+}
+
+model FeatureVote {
+  id        String     @id @default(uuid())
+  featureId String
+  userId    String
+  createdAt DateTime   @default(now())
+
+  feature   FeatureIdea @relation(fields: [featureId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@unique([featureId, userId])
+  @@index([featureId])
+  @@index([userId])
 }
 
 model PushToken {

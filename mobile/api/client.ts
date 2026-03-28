@@ -84,6 +84,18 @@ export type VerificationDocument = {
   reviewedByAdmin?: User | null;
 };
 
+export type FeatureIdea = {
+  id: string;
+  slug: string;
+  title: string;
+  shortDescription: string;
+  longDescription: string;
+  voteCount: number;
+  voted: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CreateCurrencyPostPayload = {
   haveCurrency: string;
   needCurrency: string;
@@ -490,6 +502,21 @@ export class ApiClient {
     return this.post<VerificationDocument>(
       `/admin/verification/documents/${payload.id}/review`,
       { status: payload.status, rejectionReason: payload.rejectionReason },
+    );
+  }
+
+  async listFeatureIdeas() {
+    return this.get<FeatureIdea[]>('/features');
+  }
+
+  async getFeatureIdea(slug: string) {
+    return this.get<FeatureIdea>(`/features/${slug}`);
+  }
+
+  async toggleFeatureVote(slug: string) {
+    return this.post<{ voted: boolean; voteCount: number }>(
+      `/features/${slug}/vote`,
+      undefined,
     );
   }
 

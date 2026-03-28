@@ -10,6 +10,7 @@ import { RatingsModule } from './ratings/ratings.module';
 import { TrustModule } from './trust/trust.module';
 import { UsersModule } from './users/users.module';
 import { VerificationModule } from './verification/verification.module';
+import { FeaturesModule } from './features/features.module';
 
 import { ChatModule } from './chat/chat.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -31,6 +32,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     LogsModule,
     DashboardModule,
     VerificationModule,
+    FeaturesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,15 +1,65 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
+import { apiClient, type FeatureIdea } from '@/api/client';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
 
-export default function TabTwoScreen() {
+export default function ExploreScreen() {
+  const router = useRouter();
+  const [features, setFeatures] = useState<FeatureIdea[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await apiClient.listFeatureIdeas();
+      setFeatures(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const handleToggleVote = async (slug: string) => {
+    setFeatures((prev) =>
+      prev.map((f) =>
+        f.slug === slug
+          ? {
+              ...f,
+              voted: !f.voted,
+              voteCount: f.voteCount + (f.voted ? -1 : 1),
+            }
+          : f,
+      ),
+    );
+    try {
+      const res = await apiClient.toggleFeatureVote(slug);
+      setFeatures((prev) =>
+        prev.map((f) =>
+          f.slug === slug
+            ? { ...f, voted: res.voted, voteCount: res.voteCount }
+            : f,
+        ),
+      );
+    } catch (e) {
+      await load();
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
@@ -30,70 +80,55 @@ export default function TabTwoScreen() {
           Explore
         </ThemedText>
       </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
+      <ThemedText style={styles.subtitle}>
+        Help prioritize what we build next. Tap a feature to read details, and upvote if you want it.
+      </ThemedText>
+
+      <ThemedView style={styles.actionsRow}>
+        <ThemedButton title="Refresh" variant="secondary" onPress={load} disabled={loading} />
+      </ThemedView>
+
+      {error ? (
+        <ThemedText style={styles.errorText}>{error}</ThemedText>
+      ) : null}
+
+      {loading ? (
+        <ThemedView style={styles.centered}>
+          <ActivityIndicator size="large" />
+        </ThemedView>
+      ) : (
+        <ThemedView style={styles.list}>
+          {features.map((f) => (
+            <Pressable
+              key={f.slug}
+              style={styles.card}
+              onPress={() => router.push(`/explore/${f.slug}`)}
+            >
+              <View style={styles.cardHeader}>
+                <View style={{ flex: 1 }}>
+                  <ThemedText type="defaultSemiBold">{f.title}</ThemedText>
+                  <ThemedText style={styles.cardDesc}>{f.shortDescription}</ThemedText>
+                </View>
+                <View style={styles.voteBox}>
+                  <ThemedText type="defaultSemiBold">{f.voteCount}</ThemedText>
+                  <ThemedText style={styles.voteLabel}>votes</ThemedText>
+                </View>
+              </View>
+              <ThemedView style={styles.cardActions}>
+                <ThemedButton
+                  title={f.voted ? 'Upvoted' : 'Upvote'}
+                  variant={f.voted ? 'secondary' : 'primary'}
+                  onPress={() => handleToggleVote(f.slug)}
+                />
+              </ThemedView>
+            </Pressable>
+          ))}
+
+          {features.length === 0 ? (
+            <ThemedText>No feature ideas yet.</ThemedText>
+          ) : null}
+        </ThemedView>
+      )}
     </ParallaxScrollView>
   );
 }
@@ -108,5 +143,54 @@ const styles = StyleSheet.create({
   titleContainer: {
     flexDirection: 'row',
     gap: 8,
+  },
+  subtitle: {
+    marginTop: 8,
+    opacity: 0.9,
+  },
+  actionsRow: {
+    marginTop: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  errorText: {
+    marginBottom: 8,
+    color: '#d00',
+  },
+  centered: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  list: {
+    gap: 12,
+    marginTop: 8,
+  },
+  card: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#999',
+    borderRadius: 12,
+    padding: 12,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  cardDesc: {
+    marginTop: 6,
+    opacity: 0.9,
+  },
+  voteBox: {
+    alignItems: 'center',
+    minWidth: 56,
+  },
+  voteLabel: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
+  cardActions: {
+    marginTop: 12,
   },
 });
