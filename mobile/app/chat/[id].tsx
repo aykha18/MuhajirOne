@@ -25,6 +25,10 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
+  const myMessageBackgroundColor =
+    colorScheme === 'dark'
+      ? Colors.light.tint
+      : Colors[colorScheme ?? 'light'].tint;
 
   useEffect(() => {
     navigation.setOptions({ title: 'Chat' });
@@ -93,10 +97,10 @@ export default function ChatScreen() {
       <View style={[
         styles.messageContainer, 
         isMe ? styles.myMessage : styles.theirMessage,
-        { backgroundColor: isMe ? Colors[colorScheme ?? 'light'].tint : '#e5e5ea' }
+        { backgroundColor: isMe ? myMessageBackgroundColor : '#e5e5ea' }
       ]}>
         <ThemedText style={{ color: isMe ? '#fff' : '#000' }}>{item.content}</ThemedText>
-        <ThemedText style={[styles.timestamp, { color: isMe ? '#eee' : '#666' }]}>
+        <ThemedText style={[styles.timestamp, { color: isMe ? '#f5f5f5' : '#666' }]}>
           {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </ThemedText>
       </View>

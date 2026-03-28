@@ -1,11 +1,14 @@
 {
   "cli": {
-    "version": ">= 10.0.0"
+    "version": ">= 13.0.0"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -13,9 +16,11 @@
         "buildType": "apk"
       }
     },
-    "production": {}
-  },
-  "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
   }
 }
+
