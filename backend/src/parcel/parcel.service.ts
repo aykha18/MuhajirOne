@@ -12,6 +12,7 @@ import { UpdateParcelTripDto } from './dto/update-parcel-trip.dto';
 import { ListParcelTripsDto } from './dto/list-parcel-trips.dto';
 import { CreateParcelRequestDto } from './dto/create-parcel-request.dto';
 import { ListParcelRequestsDto } from './dto/list-parcel-requests.dto';
+import { UpdateParcelRequestDto } from './dto/update-parcel-request.dto';
 
 @Injectable()
 export class ParcelService {
@@ -307,6 +308,60 @@ export class ParcelService {
       },
     });
     return request;
+  }
+
+  async updateRequest(userId: string, id: string, dto: UpdateParcelRequestDto) {
+    const request = await this.prisma.parcelRequest.findUnique({
+      where: { id },
+    });
+    if (!request || request.deletedAt) {
+      throw new NotFoundException('Request not found');
+    }
+    if (request.userId !== userId) {
+      throw new ForbiddenException();
+    }
+    if (request.status !== 'active') {
+      throw new BadRequestException('Only active requests can be updated');
+    }
+
+    let flexibleFromDate = request.flexibleFromDate;
+    let flexibleToDate = request.flexibleToDate;
+    if (dto.flexibleFromDate) {
+      const nextFrom = new Date(dto.flexibleFromDate);
+      if (Number.isNaN(nextFrom.getTime())) {
+        throw new BadRequestException('Invalid dates');
+      }
+      nextFrom.setHours(0, 0, 0, 0);
+      flexibleFromDate = nextFrom;
+    }
+    if (dto.flexibleToDate) {
+      const nextTo = new Date(dto.flexibleToDate);
+      if (Number.isNaN(nextTo.getTime())) {
+        throw new BadRequestException('Invalid dates');
+      }
+      nextTo.setHours(23, 59, 59, 999);
+      flexibleToDate = nextTo;
+    }
+    if (flexibleToDate < flexibleFromDate) {
+      throw new BadRequestException(
+        'Flexible to date must be after flexible from date',
+      );
+    }
+    if (flexibleToDate <= new Date()) {
+      throw new BadRequestException('Flexible window must be in the future');
+    }
+
+    return this.prisma.parcelRequest.update({
+      where: { id },
+      data: {
+        itemType: dto.itemType ?? undefined,
+        weightKg: dto.weightKg ?? undefined,
+        fromCountry: dto.fromCountry ?? undefined,
+        toCountry: dto.toCountry ?? undefined,
+        flexibleFromDate,
+        flexibleToDate,
+      },
+    });
   }
 
   async listRequests(query: ListParcelRequestsDto) {

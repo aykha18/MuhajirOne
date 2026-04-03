@@ -50,6 +50,8 @@ export default function CurrencyScreen() {
   const [loadedOnce, setLoadedOnce] = useState(false);
   
   const [creating, setCreating] = useState(false);
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [haveCurrency, setHaveCurrency] = useState('');
   const [needCurrency, setNeedCurrency] = useState('');
   const [amount, setAmount] = useState('');
@@ -146,6 +148,59 @@ export default function CurrencyScreen() {
     } finally {
       setCreatingBusy(false);
     }
+  };
+
+  const handleUpdatePost = async () => {
+    if (!editingPostId) return;
+    setCreatingBusy(true);
+    setCreateError(null);
+    try {
+      const amountNumber = Number(amount);
+      const preferredRateNumber = Number(preferredRate);
+      if (Number.isNaN(amountNumber) || amountNumber <= 0) {
+        throw new Error('Amount must be a valid number greater than 0');
+      }
+      if (Number.isNaN(preferredRateNumber) || preferredRateNumber < 0) {
+        throw new Error('Preferred rate must be a valid number');
+      }
+      await apiClient.updateCurrencyPost(editingPostId, {
+        haveCurrency,
+        needCurrency,
+        amount: amountNumber,
+        preferredRate: preferredRateNumber,
+        city,
+      });
+      closeForm();
+      await load();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreatingBusy(false);
+    }
+  };
+
+  const startEditPost = (post: CurrencyPost) => {
+    setFormMode('edit');
+    setEditingPostId(post.id);
+    setHaveCurrency(post.haveCurrency);
+    setNeedCurrency(post.needCurrency);
+    setAmount(String(post.amount));
+    setPreferredRate(String(post.preferredRate));
+    setCity(post.city);
+    setCreateError(null);
+    setCreating(true);
+  };
+
+  const closeForm = () => {
+    setCreating(false);
+    setFormMode('create');
+    setEditingPostId(null);
+    setHaveCurrency('');
+    setNeedCurrency('');
+    setAmount('');
+    setPreferredRate('');
+    setCity('');
+    setCreateError(null);
   };
 
   const handleRequestMatch = async (post: CurrencyPost) => {
@@ -303,11 +358,20 @@ export default function CurrencyScreen() {
         
         <View style={styles.cardActions}>
           {isMyPost ? (
-            <ThemedButton 
-              title="Cancel Post" 
-              variant="secondary" 
-              onPress={() => handleCancelPost(item.id)} 
-            />
+            <View style={styles.rowButtons}>
+              <ThemedButton
+                title="Edit"
+                variant="secondary"
+                onPress={() => startEditPost(item)}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <ThemedButton 
+                title="Cancel Post" 
+                variant="secondary" 
+                onPress={() => handleCancelPost(item.id)} 
+                style={{ flex: 1 }}
+              />
+            </View>
           ) : (
             <View style={styles.rowButtons}>
               {hasPendingRequest ? (
@@ -525,7 +589,21 @@ export default function CurrencyScreen() {
         <View style={styles.headerButtons}>
           <ThemedButton
             title={creating ? 'Close' : 'Create'}
-            onPress={() => setCreating((prev) => !prev)}
+            onPress={() => {
+              if (creating) {
+                closeForm();
+                return;
+              }
+              setFormMode('create');
+              setEditingPostId(null);
+              setHaveCurrency('');
+              setNeedCurrency('');
+              setAmount('');
+              setPreferredRate('');
+              setCity('');
+              setCreateError(null);
+              setCreating(true);
+            }}
             variant="secondary"
             style={{ minWidth: 80 }}
           />
@@ -636,7 +714,9 @@ export default function CurrencyScreen() {
 
       {creating && (
         <ThemedView style={[styles.form, { backgroundColor: formBackgroundColor }]}>
-          <ThemedText type="subtitle">New Post</ThemedText>
+          <ThemedText type="subtitle">
+            {formMode === 'edit' ? 'Edit Post' : 'New Post'}
+          </ThemedText>
           {createError && <ThemedText style={{ color: 'red' }}>{createError}</ThemedText>}
           
           <CurrencySelector
@@ -671,12 +751,30 @@ export default function CurrencyScreen() {
               }
             }}
           />
-          
-          <ThemedButton
-            title={creatingBusy ? 'Creating...' : 'Submit'}
-            onPress={handleCreatePost}
-            disabled={creatingBusy}
-          />
+
+          <View style={styles.rowButtons}>
+            <ThemedButton
+              title={
+                creatingBusy
+                  ? formMode === 'edit'
+                    ? 'Saving...'
+                    : 'Creating...'
+                  : formMode === 'edit'
+                    ? 'Save Changes'
+                    : 'Submit'
+              }
+              onPress={formMode === 'edit' ? handleUpdatePost : handleCreatePost}
+              disabled={creatingBusy}
+              style={{ flex: 1, marginRight: 8 }}
+            />
+            <ThemedButton
+              title="Cancel"
+              variant="secondary"
+              onPress={closeForm}
+              disabled={creatingBusy}
+              style={{ flex: 1 }}
+            />
+          </View>
         </ThemedView>
       )}
 

@@ -14,6 +14,7 @@ import { CreateParcelRequestDto } from './dto/create-parcel-request.dto';
 import { CreateParcelTripDto } from './dto/create-parcel-trip.dto';
 import { ListParcelRequestsDto } from './dto/list-parcel-requests.dto';
 import { ListParcelTripsDto } from './dto/list-parcel-trips.dto';
+import { UpdateParcelRequestDto } from './dto/update-parcel-request.dto';
 import { UpdateParcelTripDto } from './dto/update-parcel-trip.dto';
 import { ParcelService } from './parcel.service';
 
@@ -83,6 +84,15 @@ export class ParcelController {
   @Get('requests/mine')
   listMyRequests(@Req() req: AuthenticatedRequest) {
     return this.parcelService.listMyRequests(req.user.id);
+  }
+
+  @Patch('requests/:id')
+  updateRequest(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateParcelRequestDto,
+  ) {
+    return this.parcelService.updateRequest(req.user.id, id, dto);
   }
 
   @Post('requests/:id/cancel')

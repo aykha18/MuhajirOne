@@ -111,6 +111,8 @@ export type CreateCurrencyPostPayload = {
   expiryDate: string;
 };
 
+export type UpdateCurrencyPostPayload = Partial<CreateCurrencyPostPayload>;
+
 export type CreateMatchRequestPayload = {
   message?: string;
 };
@@ -124,6 +126,8 @@ export type CreateParcelTripPayload = {
   allowedCategories: string;
 };
 
+export type UpdateParcelTripPayload = Partial<CreateParcelTripPayload>;
+
 export type CreateParcelRequestPayload = {
   itemType: string;
   weightKg: number;
@@ -132,6 +136,8 @@ export type CreateParcelRequestPayload = {
   flexibleFromDate: string;
   flexibleToDate: string;
 };
+
+export type UpdateParcelRequestPayload = Partial<CreateParcelRequestPayload>;
 
 export type Conversation = {
   id: string;
@@ -341,6 +347,10 @@ export class ApiClient {
     return this.post('/currency/posts', payload);
   }
 
+  async updateCurrencyPost(id: string, payload: UpdateCurrencyPostPayload) {
+    return this.patch(`/currency/posts/${id}`, payload);
+  }
+
   async activateCurrencyPost(id: string) {
     return this.post(`/currency/posts/${id}/activate`, undefined);
   }
@@ -390,6 +400,14 @@ export class ApiClient {
 
   async createParcelRequest(payload: CreateParcelRequestPayload) {
     return this.post('/parcel/requests', payload);
+  }
+
+  async updateParcelTrip(id: string, payload: UpdateParcelTripPayload) {
+    return this.patch(`/parcel/trips/${id}`, payload);
+  }
+
+  async updateParcelRequest(id: string, payload: UpdateParcelRequestPayload) {
+    return this.patch(`/parcel/requests/${id}`, payload);
   }
 
   async listParcelRequests(params?: {

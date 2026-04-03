@@ -14,6 +14,7 @@ import { DisputeModal } from '@/components/dispute-modal';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import parcelItemTypes from '@/data/parcel-item-types.json';
+import citiesData from '@/data/cities.json';
 
 type ParcelTrip = {
   id: string;
@@ -76,6 +77,8 @@ export default function ParcelScreen() {
   
   const [showTripForm, setShowTripForm] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   
   // Trip Form State
   const [fromCountry, setFromCountry] = useState<Country | undefined>(undefined);
@@ -203,6 +206,46 @@ export default function ParcelScreen() {
     void load();
   }, []);
 
+  const findCountryByName = (name: string): Country | undefined => {
+    const entry = (citiesData as any[]).find(
+      (c) =>
+        typeof c?.country === 'string' &&
+        c.country.toLowerCase() === name.toLowerCase() &&
+        typeof c?.countryCode === 'string' &&
+        typeof c?.dialCode === 'string',
+    );
+    if (!entry) return;
+    return {
+      name: entry.country,
+      code: entry.countryCode,
+      dialCode: entry.dialCode,
+    };
+  };
+
+  const resetTripForm = () => {
+    setFromCountry(undefined);
+    setToCountry(undefined);
+    setDepartureDate(undefined);
+    setDepartureTime(undefined);
+    setArrivalDate(undefined);
+    setArrivalTime(undefined);
+    setMaxWeightKg('');
+    setAllowedCategories('');
+    setEditingTripId(null);
+    setShowTripForm(false);
+  };
+
+  const resetRequestForm = () => {
+    setReqItemType('');
+    setReqFromCountry(undefined);
+    setReqToCountry(undefined);
+    setReqFlexibleFromDate(undefined);
+    setReqFlexibleToDate(undefined);
+    setReqWeightKg('');
+    setEditingRequestId(null);
+    setShowRequestForm(false);
+  };
+
   const handleCreateTrip = async () => {
     setCreatingBusy(true);
     setCreateError(null);
@@ -232,24 +275,22 @@ export default function ParcelScreen() {
         finalArrival.setHours(23, 59, 59, 999);
       }
 
-      await apiClient.createParcelTrip({
+      const payload = {
         fromCountry: fromCountry.name,
         toCountry: toCountry.name,
         departureDate: finalDeparture.toISOString(),
         arrivalDate: finalArrival.toISOString(),
         maxWeightKg: maxWeight,
         allowedCategories,
-      });
-      
-      setFromCountry(undefined);
-      setToCountry(undefined);
-      setDepartureDate(undefined);
-      setDepartureTime(undefined);
-      setArrivalDate(undefined);
-      setArrivalTime(undefined);
-      setMaxWeightKg('');
-      setAllowedCategories('');
-      setShowTripForm(false);
+      };
+
+      if (editingTripId) {
+        await apiClient.updateParcelTrip(editingTripId, payload);
+      } else {
+        await apiClient.createParcelTrip(payload);
+      }
+
+      resetTripForm();
       await load();
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : String(e));
@@ -277,28 +318,63 @@ export default function ParcelScreen() {
       const flexibleTo = new Date(reqFlexibleToDate);
       flexibleTo.setHours(23, 59, 59, 999);
 
-      await apiClient.createParcelRequest({
+      const payload = {
         itemType: reqItemType,
         weightKg: weight,
         fromCountry: reqFromCountry.name,
         toCountry: reqToCountry.name,
         flexibleFromDate: flexibleFrom.toISOString(),
         flexibleToDate: flexibleTo.toISOString(),
-      });
-      
-      setReqItemType('');
-      setReqFromCountry(undefined);
-      setReqToCountry(undefined);
-      setReqFlexibleFromDate(undefined);
-      setReqFlexibleToDate(undefined);
-      setReqWeightKg('');
-      setShowRequestForm(false);
+      };
+
+      if (editingRequestId) {
+        await apiClient.updateParcelRequest(editingRequestId, payload);
+      } else {
+        await apiClient.createParcelRequest(payload);
+      }
+
+      resetRequestForm();
       await load();
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : String(e));
     } finally {
       setCreatingBusy(false);
     }
+  };
+
+  const startEditTrip = (trip: ParcelTrip) => {
+    setCreateError(null);
+    setEditingTripId(trip.id);
+    setEditingRequestId(null);
+    setShowRequestForm(false);
+    setShowTripForm(true);
+
+    setFromCountry(findCountryByName(trip.fromCountry));
+    setToCountry(findCountryByName(trip.toCountry));
+
+    const dep = new Date(trip.departureDate);
+    const arr = new Date(trip.arrivalDate);
+    setDepartureDate(dep);
+    setDepartureTime(dep);
+    setArrivalDate(arr);
+    setArrivalTime(arr);
+    setMaxWeightKg(String(trip.maxWeightKg));
+    setAllowedCategories(trip.allowedCategories ?? '');
+  };
+
+  const startEditRequest = (request: ParcelRequest) => {
+    setCreateError(null);
+    setEditingRequestId(request.id);
+    setEditingTripId(null);
+    setShowTripForm(false);
+    setShowRequestForm(true);
+
+    setReqItemType(request.itemType);
+    setReqWeightKg(String(request.weightKg));
+    setReqFromCountry(findCountryByName(request.fromCountry));
+    setReqToCountry(findCountryByName(request.toCountry));
+    setReqFlexibleFromDate(new Date(request.flexibleFromDate));
+    setReqFlexibleToDate(new Date(request.flexibleToDate));
   };
 
   const findTripsForRequest = async (request: ParcelRequest) => {
@@ -614,22 +690,32 @@ export default function ParcelScreen() {
     )}
 
     {isMyTrip && item.status === 'active' && (
-           <View style={[styles.cardActions, { justifyContent: 'space-between' }]}>
-             <ThemedButton 
-               title="Find Packages" 
-               onPress={() => findRequestsForTrip(item)} 
-               disabled={busy || matchingBusy}
-               style={{ flex: 1, marginRight: 8 }}
-             />
-             <ThemedButton 
-               title="Complete Trip" 
-               onPress={() => handleCompleteTrip(item.id)} 
-               disabled={busy}
-               variant="secondary"
-               style={{ flex: 1 }}
-             />
-           </View>
-        )}
+      <View style={styles.cardActions}>
+        <View style={styles.rowButtons}>
+          <ThemedButton 
+            title="Find Packages" 
+            onPress={() => findRequestsForTrip(item)} 
+            disabled={busy || matchingBusy}
+            style={{ flex: 1, marginRight: 8 }}
+          />
+          <ThemedButton 
+            title="Edit" 
+            onPress={() => startEditTrip(item)} 
+            disabled={busy || matchingBusy}
+            variant="secondary"
+            style={{ flex: 1 }}
+          />
+        </View>
+        <View style={{ height: 8 }} />
+        <ThemedButton 
+          title="Complete Trip" 
+          onPress={() => handleCompleteTrip(item.id)} 
+          disabled={busy}
+          variant="secondary"
+          fullWidth
+        />
+      </View>
+    )}
 
         {!isMyTrip && item.status === 'active' && (
        <View style={[styles.cardActions, { justifyContent: 'space-between' }]}>
@@ -704,13 +790,23 @@ export default function ParcelScreen() {
 
         {/* Actions for Request Owner - Active */}
         {isMyRequest && item.status === 'active' && (
-           <View style={styles.cardActions}>
-             <ThemedButton 
-               title="Find Traveler" 
-               onPress={() => findTripsForRequest(item)} 
-               disabled={matchingBusy}
-             />
-           </View>
+          <View style={styles.cardActions}>
+            <View style={styles.rowButtons}>
+              <ThemedButton 
+                title="Find Traveler" 
+                onPress={() => findTripsForRequest(item)} 
+                disabled={matchingBusy}
+                style={{ flex: 1, marginRight: 8 }}
+              />
+              <ThemedButton
+                title="Edit"
+                variant="secondary"
+                onPress={() => startEditRequest(item)}
+                disabled={matchingBusy}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
         )}
 
         {/* Pending Actions (For Request Owner OR Trip Owner) */}
@@ -956,16 +1052,26 @@ export default function ParcelScreen() {
           <ThemedButton
             title={showTripForm ? 'Close trip form' : 'New trip'}
             onPress={() => {
-              setShowTripForm((prev) => !prev);
+              if (showTripForm) {
+                resetTripForm();
+                return;
+              }
+              resetTripForm();
               setShowRequestForm(false);
+              setShowTripForm(true);
             }}
             disabled={busy || creatingBusy}
           />
           <ThemedButton
             title={showRequestForm ? 'Close request form' : 'New request'}
             onPress={() => {
-              setShowRequestForm((prev) => !prev);
+              if (showRequestForm) {
+                resetRequestForm();
+                return;
+              }
+              resetRequestForm();
               setShowTripForm(false);
+              setShowRequestForm(true);
             }}
             disabled={busy || creatingBusy}
           />
@@ -978,6 +1084,9 @@ export default function ParcelScreen() {
       
       {showTripForm && (
         <View style={styles.form}>
+          <ThemedText type="subtitle">
+            {editingTripId ? 'Edit Trip' : 'New Trip'}
+          </ThemedText>
           <CountrySelector placeholder="From Country" value={fromCountry} onChange={setFromCountry} showDialCode={false} />
           <CountrySelector placeholder="To Country" value={toCountry} onChange={setToCountry} showDialCode={false} />
           <View style={styles.row}>
@@ -1000,17 +1109,34 @@ export default function ParcelScreen() {
           </View>
           <ThemedInput placeholder="Max weight (kg)" keyboardType="numeric" value={maxWeightKg} onChangeText={setMaxWeightKg} />
           <ThemedInput placeholder="Allowed categories" value={allowedCategories} onChangeText={setAllowedCategories} />
-          <ThemedButton
-            title="Create trip"
-            onPress={handleCreateTrip}
-            disabled={creatingBusy || !fromCountry || !toCountry || !departureDate || !arrivalDate || !maxWeightKg}
-            fullWidth
-          />
+          <View style={styles.row}>
+            <View style={styles.flex1}>
+              <ThemedButton
+                title={editingTripId ? 'Save trip' : 'Create trip'}
+                onPress={handleCreateTrip}
+                disabled={creatingBusy || !fromCountry || !toCountry || !departureDate || !arrivalDate || !maxWeightKg}
+                fullWidth
+              />
+            </View>
+            <View style={styles.spacer} />
+            <View style={styles.flex1}>
+              <ThemedButton
+                title="Cancel"
+                variant="secondary"
+                onPress={resetTripForm}
+                disabled={creatingBusy}
+                fullWidth
+              />
+            </View>
+          </View>
         </View>
       )}
 
       {showRequestForm && (
         <View style={styles.form}>
+          <ThemedText type="subtitle">
+            {editingRequestId ? 'Edit Request' : 'New Request'}
+          </ThemedText>
           <ItemTypeSelector placeholder="Item type" value={reqItemType} onChange={setReqItemType} />
           <ThemedInput placeholder="Weight (kg)" keyboardType="numeric" value={reqWeightKg} onChangeText={setReqWeightKg} />
           <CountrySelector placeholder="From Country" value={reqFromCountry} onChange={setReqFromCountry} showDialCode={false} />
@@ -1024,12 +1150,26 @@ export default function ParcelScreen() {
                 <DateTimePickerInput placeholder="Flexible To" value={reqFlexibleToDate || ''} onChange={setReqFlexibleToDate} mode="date" minimumDate={reqFlexibleFromDate || new Date()} />
              </View>
           </View>
-          <ThemedButton
-            title="Create request"
-            onPress={handleCreateRequest}
-            disabled={creatingBusy || !reqItemType || !reqWeightKg || !reqFromCountry || !reqToCountry || !reqFlexibleFromDate || !reqFlexibleToDate}
-            fullWidth
-          />
+          <View style={styles.row}>
+            <View style={styles.flex1}>
+              <ThemedButton
+                title={editingRequestId ? 'Save request' : 'Create request'}
+                onPress={handleCreateRequest}
+                disabled={creatingBusy || !reqItemType || !reqWeightKg || !reqFromCountry || !reqToCountry || !reqFlexibleFromDate || !reqFlexibleToDate}
+                fullWidth
+              />
+            </View>
+            <View style={styles.spacer} />
+            <View style={styles.flex1}>
+              <ThemedButton
+                title="Cancel"
+                variant="secondary"
+                onPress={resetRequestForm}
+                disabled={creatingBusy}
+                fullWidth
+              />
+            </View>
+          </View>
         </View>
       )}
 
