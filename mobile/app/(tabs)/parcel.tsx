@@ -690,7 +690,7 @@ export default function ParcelScreen() {
     )}
 
     {isMyTrip && item.status === 'active' && (
-      <View style={styles.cardActions}>
+      <View style={[styles.cardActions, styles.cardActionsColumn]}>
         <View style={styles.rowButtons}>
           <ThemedButton 
             title="Find Packages" 
@@ -1436,6 +1436,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
     flexDirection: 'row',
     justifyContent: 'flex-end',
+  },
+  cardActionsColumn: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  rowButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   tabsContainer: {
     flexDirection: 'row',
