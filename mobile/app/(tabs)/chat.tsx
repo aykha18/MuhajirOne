@@ -132,9 +132,7 @@ export default function ChatListScreen() {
   return (
     <ThemedView style={[styles.container, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
       <View style={styles.header}>
-        <ThemedText type="title" style={styles.headerTitle}>
-          Messages
-        </ThemedText>
+        <ThemedText type="title" style={styles.headerTitle}>Connect</ThemedText>
         <View style={[styles.unreadPill, { backgroundColor: Colors[colorScheme ?? 'light'].background, borderColor: Colors[colorScheme ?? 'light'].border }]}>
           <ThemedText style={styles.unreadText}>0 unread</ThemedText>
         </View>

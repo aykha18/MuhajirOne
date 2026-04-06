@@ -95,13 +95,97 @@ export class CurrencyService {
         },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              verificationLevel: true,
+            },
+          },
+        },
       }),
       this.prisma.currencyPost.count({
         where,
       }),
     ]);
+
+    const userIds = Array.from(new Set(items.map((p) => p.userId)));
+    const [ratingGroups, requesterTrades, targetTrades] = await Promise.all([
+      this.prisma.rating.groupBy({
+        by: ['toUserId'],
+        where: { toUserId: { in: userIds } },
+        _avg: {
+          reliabilityScore: true,
+          communicationScore: true,
+          timelinessScore: true,
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.currencyMatchRequest.groupBy({
+        by: ['requesterId'],
+        where: {
+          requesterId: { in: userIds },
+          status: 'completed',
+          deletedAt: null,
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.currencyMatchRequest.groupBy({
+        by: ['targetUserId'],
+        where: {
+          targetUserId: { in: userIds },
+          status: 'completed',
+          deletedAt: null,
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const ratingMap = new Map<
+      string,
+      { ratingAvg: number | null; ratingCount: number }
+    >();
+    for (const g of ratingGroups) {
+      const avgRel = g._avg.reliabilityScore ?? null;
+      const avgCom = g._avg.communicationScore ?? null;
+      const avgTim = g._avg.timelinessScore ?? null;
+      const hasAll =
+        typeof avgRel === 'number' &&
+        typeof avgCom === 'number' &&
+        typeof avgTim === 'number';
+      const ratingAvg = hasAll ? (avgRel + avgCom + avgTim) / 3 : null;
+      ratingMap.set(g.toUserId, {
+        ratingAvg,
+        ratingCount: g._count._all,
+      });
+    }
+
+    const tradeCountMap = new Map<string, number>();
+    for (const g of requesterTrades) {
+      tradeCountMap.set(
+        g.requesterId,
+        (tradeCountMap.get(g.requesterId) ?? 0) + g._count._all,
+      );
+    }
+    for (const g of targetTrades) {
+      tradeCountMap.set(
+        g.targetUserId,
+        (tradeCountMap.get(g.targetUserId) ?? 0) + g._count._all,
+      );
+    }
+
+    const itemsWithStats = items.map((p) => {
+      const rating = ratingMap.get(p.userId);
+      return {
+        ...p,
+        ratingAvg: rating?.ratingAvg ?? null,
+        ratingCount: rating?.ratingCount ?? 0,
+        tradeCount: tradeCountMap.get(p.userId) ?? 0,
+      };
+    });
     return {
-      items,
+      items: itemsWithStats,
       total,
       page,
       pageSize,

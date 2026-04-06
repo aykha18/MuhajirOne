@@ -16,10 +16,10 @@ export function ThemedInput({
 }: ThemedInputProps) {
   const backgroundColor = useThemeColor(
     { light: lightColor, dark: darkColor },
-    'background',
+    'surface',
   );
   const textColor = useThemeColor({}, 'text');
-  const borderColor = useThemeColor({}, 'icon');
+  const borderColor = useThemeColor({}, 'border');
   const placeholderColor = useThemeColor({}, 'icon');
 
   const input = (
@@ -61,10 +61,9 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
   },
 });
-

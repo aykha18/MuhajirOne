@@ -27,6 +27,10 @@ type CurrencyPost = {
   city: string;
   userId: string;
   status: string;
+  user?: { id: string; fullName: string; verificationLevel: number };
+  ratingAvg?: number | null;
+  ratingCount?: number;
+  tradeCount?: number;
 };
 
 type MatchRequest = {
@@ -60,6 +64,7 @@ export default function CurrencyScreen() {
   const [amount, setAmount] = useState('');
   const [preferredRate, setPreferredRate] = useState('');
   const [city, setCity] = useState('');
+  const [note, setNote] = useState('');
 
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filterMineOnly, setFilterMineOnly] = useState(false);
@@ -203,18 +208,30 @@ export default function CurrencyScreen() {
     setAmount('');
     setPreferredRate('');
     setCity('');
+    setNote('');
     setCreateError(null);
   };
 
-  const handleRequestMatch = async (post: CurrencyPost) => {
-    try {
-      await apiClient.createMatchRequest(post.id, {});
-      Alert.alert('Success', 'Match request sent!');
-      await load();
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : String(e));
+  useEffect(() => {
+    if (viewMode === 'requests') {
+      setFormMode('create');
+      setEditingPostId(null);
+      setCreateError(null);
+      setCreating(true);
+      if (!haveCurrency && filterHaveCurrency) setHaveCurrency(filterHaveCurrency);
+      if (!needCurrency && filterNeedCurrency) setNeedCurrency(filterNeedCurrency);
+    } else {
+      setCreating(false);
     }
-  };
+  }, [viewMode, filterHaveCurrency, filterNeedCurrency, haveCurrency, needCurrency]);
+
+  const computedReceiveAmount = useMemo(() => {
+    const amountNumber = Number(amount);
+    const rateNumber = Number(preferredRate);
+    if (Number.isNaN(amountNumber) || Number.isNaN(rateNumber)) return null;
+    if (amountNumber <= 0 || rateNumber <= 0) return null;
+    return amountNumber * rateNumber;
+  }, [amount, preferredRate]);
 
   const handleAcceptRequest = async (requestId: string) => {
     try {
@@ -345,24 +362,25 @@ export default function CurrencyScreen() {
 
   const renderPostItem = ({ item }: { item: CurrencyPost }) => {
     const isMyPost = item.userId === myUserId;
-    const hasPendingRequest = requests.some(
-      r => r.currencyPostId === item.id && r.requesterId === myUserId && r.status === 'pending'
-    );
+    const displayName = item.user?.fullName || (isMyPost ? 'You' : 'User');
+    const ratingAvg = typeof item.ratingAvg === 'number' ? item.ratingAvg : null;
+    const tradeCount = typeof item.tradeCount === 'number' ? item.tradeCount : 0;
+    const isVerified = (item.user?.verificationLevel ?? 0) >= 2;
 
     return (
       <AppCard style={styles.postCard}>
         <View style={styles.postHeaderRow}>
           <View style={[styles.userCircle, { backgroundColor: 'rgba(77, 163, 255, 0.18)' }]}>
             <ThemedText type="defaultSemiBold" style={{ color: Colors[colorScheme ?? 'light'].tint }}>
-              {isMyPost ? 'Me'.charAt(0) : 'A'}
+              {displayName.charAt(0).toUpperCase()}
             </ThemedText>
           </View>
           <View style={{ flex: 1 }}>
             <ThemedText type="defaultSemiBold" numberOfLines={1}>
-              {isMyPost ? 'My listing' : 'Verified user'}
+              {displayName}{isVerified ? ' ✓' : ''}
             </ThemedText>
             <ThemedText style={styles.postMeta} numberOfLines={1}>
-              {item.city}
+              {(ratingAvg ? `★ ${ratingAvg.toFixed(1)}` : '★ —') + ` · ${tradeCount} trades`}
             </ThemedText>
           </View>
           <View style={[styles.ratePill, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
@@ -394,15 +412,10 @@ export default function CurrencyScreen() {
             </View>
           ) : (
             <View style={styles.rowButtons}>
-              {hasPendingRequest ? (
-                <ThemedButton title="Requested" variant="secondary" disabled onPress={() => {}} style={{ flex: 1, marginRight: 8 }} />
-              ) : (
-                <ThemedButton title="Connect" onPress={() => handleRequestMatch(item)} style={{ flex: 1, marginRight: 8 }} />
-              )}
-              <ThemedButton 
-                title="Chat" 
-                variant="secondary" 
-                onPress={() => handleMessage(item.userId, requests.find(r => r.currencyPostId === item.id && r.requesterId === myUserId)?.id)} 
+              <ThemedButton
+                title="Connect"
+                onPress={() => handleMessage(item.userId)}
+                fullWidth
                 style={{ flex: 1 }}
               />
             </View>
@@ -460,7 +473,7 @@ export default function CurrencyScreen() {
                   </View>
                   <View style={{ height: 8 }} />
                   <ThemedButton 
-                    title="Chat" 
+                    title="Connect" 
                     variant="secondary" 
                     onPress={() => handleMessage(chatTargetId, item.id)}
                   />
@@ -476,7 +489,7 @@ export default function CurrencyScreen() {
                   />
                   <View style={{ width: 8 }} />
                   <ThemedButton 
-                    title="Chat" 
+                    title="Connect" 
                     variant="secondary" 
                     onPress={() => handleMessage(chatTargetId, item.id)}
                     style={{ flex: 1 }}
@@ -505,7 +518,7 @@ export default function CurrencyScreen() {
              />
              <View style={{ width: 8 }} />
              <ThemedButton 
-               title="Chat" 
+               title="Connect" 
                variant="secondary"
                onPress={() => handleMessage(chatTargetId, item.id)} 
                style={{ flex: 1, minWidth: 60 }}
@@ -536,7 +549,7 @@ export default function CurrencyScreen() {
                />
                <View style={{ width: 8 }} />
                <ThemedButton 
-                 title="Chat" 
+                 title="Connect" 
                  variant="secondary"
                  onPress={() => handleMessage(chatTargetId, item.id)} 
                  style={{ flex: 1, minWidth: 60 }}
@@ -617,9 +630,13 @@ export default function CurrencyScreen() {
             <CurrencySelector
               placeholder="Select"
               value={filterHaveCurrency}
-              onChange={setFilterHaveCurrency}
+              onChange={(v) => {
+                setFilterHaveCurrency(v);
+                if (viewMode === 'requests') setHaveCurrency(v);
+              }}
             />
           </View>
+
           <View style={styles.swapRow}>
             <View style={[styles.swapLine, { backgroundColor: Colors[colorScheme ?? 'light'].border }]} />
             <Pressable
@@ -628,6 +645,10 @@ export default function CurrencyScreen() {
                 const nextNeed = filterHaveCurrency;
                 setFilterHaveCurrency(nextHave);
                 setFilterNeedCurrency(nextNeed);
+                if (viewMode === 'requests') {
+                  setHaveCurrency(nextHave);
+                  setNeedCurrency(nextNeed);
+                }
               }}
               style={({ pressed }) => [
                 styles.swapButton,
@@ -638,13 +659,48 @@ export default function CurrencyScreen() {
             </Pressable>
             <View style={[styles.swapLine, { backgroundColor: Colors[colorScheme ?? 'light'].border }]} />
           </View>
-          <View style={styles.exchangeBlock}>
-            <ThemedText style={styles.exchangeLabel}>THEY RECEIVE</ThemedText>
-            <CurrencySelector
-              placeholder="Select"
-              value={filterNeedCurrency}
-              onChange={setFilterNeedCurrency}
-            />
+
+          <View style={styles.exchangeReceiveRow}>
+            <View style={{ flex: 1 }}>
+              <ThemedText style={styles.exchangeLabel}>THEY RECEIVE</ThemedText>
+              <CurrencySelector
+                placeholder="Select"
+                value={filterNeedCurrency}
+                onChange={(v) => {
+                  setFilterNeedCurrency(v);
+                  if (viewMode === 'requests') setNeedCurrency(v);
+                }}
+              />
+            </View>
+            <View style={styles.receiveAmountWrap}>
+              <ThemedText style={styles.receiveAmount}>
+                {computedReceiveAmount
+                  ? computedReceiveAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : '—'}
+              </ThemedText>
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.marketRateRow,
+              {
+                backgroundColor:
+                  (colorScheme ?? 'light') === 'dark'
+                    ? 'rgba(255,255,255,0.06)'
+                    : 'rgba(0,0,0,0.04)',
+              },
+            ]}
+          >
+            <View style={styles.marketRateLeft}>
+              <ThemedText style={styles.marketRateIcon}>↗</ThemedText>
+              <ThemedText style={styles.marketRateLabel}>Market Rate</ThemedText>
+            </View>
+            <ThemedText style={styles.marketRateValue}>
+              {filterHaveCurrency && filterNeedCurrency
+                ? `1 ${filterHaveCurrency} ≈ ${preferredRate || '—'} ${filterNeedCurrency}`
+                : '—'}
+            </ThemedText>
           </View>
         </AppCard>
 
@@ -677,59 +733,40 @@ export default function CurrencyScreen() {
             value={viewMode}
             options={[
               { value: 'posts', label: 'Browse Listings' },
-              { value: 'requests', label: 'My Requests' },
+            { value: 'requests', label: 'Post Request' },
             ]}
             onChange={setViewMode}
           />
-          <View style={{ marginTop: UI.spacing.sm }}>
-            <ThemedButton
-              title={creating ? 'Close' : 'Post Request'}
-              onPress={() => {
-                if (creating) {
-                  closeForm();
-                  return;
-                }
-                setFormMode('create');
-                setEditingPostId(null);
-                setHaveCurrency('');
-                setNeedCurrency('');
-                setAmount('');
-                setPreferredRate('');
-                setCity('');
-                setCreateError(null);
-                setCreating(true);
-              }}
-              fullWidth
-            />
-          </View>
         </View>
       </View>
 
-      <View style={styles.filterButtons}>
-        <ThemedButton
-          title={filtersVisible ? 'Hide filters' : 'Filters'}
-          variant="secondary"
-          onPress={() => setFiltersVisible((v) => !v)}
-          disabled={busy}
-          style={{ flex: 1, marginRight: 8 }}
-        />
-        <ThemedButton
-          title="Clear"
-          variant="secondary"
-          onPress={() => {
-            setFilterMineOnly(false);
-            setFilterHaveCurrency('');
-            setFilterNeedCurrency('');
-            setFilterCity('');
-            setFilterPostStatus('');
-            setFilterRequestStatus('');
-            setFilterIncoming(true);
-            setFilterOutgoing(true);
-          }}
-          disabled={busy}
-          style={{ width: 110 }}
-        />
-      </View>
+      {viewMode === 'posts' ? (
+        <View style={styles.filterButtons}>
+          <ThemedButton
+            title={filtersVisible ? 'Hide filters' : 'Filters'}
+            variant="secondary"
+            onPress={() => setFiltersVisible((v) => !v)}
+            disabled={busy}
+            style={{ flex: 1, marginRight: 8 }}
+          />
+          <ThemedButton
+            title="Clear"
+            variant="secondary"
+            onPress={() => {
+              setFilterMineOnly(false);
+              setFilterHaveCurrency('');
+              setFilterNeedCurrency('');
+              setFilterCity('');
+              setFilterPostStatus('');
+              setFilterRequestStatus('');
+              setFilterIncoming(true);
+              setFilterOutgoing(true);
+            }}
+            disabled={busy}
+            style={{ width: 110 }}
+          />
+        </View>
+      ) : null}
 
       {filtersVisible && (
         <ThemedView style={[styles.form, { backgroundColor: formBackgroundColor }]}>
@@ -790,69 +827,87 @@ export default function CurrencyScreen() {
       )}
 
       {creating && (
-        <ThemedView style={[styles.form, { backgroundColor: formBackgroundColor }]}>
-          <ThemedText type="subtitle">
-            {formMode === 'edit' ? 'Edit Post' : 'New Post'}
-          </ThemedText>
-          {createError && <ThemedText style={{ color: 'red' }}>{createError}</ThemedText>}
-          
-          <CurrencySelector
-            placeholder="Have (e.g. USD)"
-            value={haveCurrency}
-            onChange={setHaveCurrency}
-          />
-          <CurrencySelector
-            placeholder="Need (e.g. TRY)"
-            value={needCurrency}
-            onChange={setNeedCurrency}
-          />
-          <ThemedInput
-            placeholder="Amount"
-            keyboardType="numeric"
-            value={amount}
-            onChangeText={setAmount}
-          />
-          <ThemedInput
-            placeholder="Preferred Rate"
-            keyboardType="numeric"
-            value={preferredRate}
-            onChangeText={setPreferredRate}
-          />
-          <CitySelector
-            placeholder="City"
-            value={city}
-            onChange={setCity}
-            onSelectCity={(item) => {
-              if (!haveCurrency) {
-                setHaveCurrency(item.currency);
-              }
-            }}
-          />
+        <AppCard style={styles.requestFormCard}>
+          <View style={styles.requestFormHeaderRow}>
+            <ThemedText type="defaultSemiBold" style={styles.requestFormTitle}>
+              {formMode === 'edit' ? 'Edit Request' : 'Post Request'}
+            </ThemedText>
+            <Pressable onPress={closeForm} hitSlop={8}>
+              <ThemedText style={{ color: Colors[colorScheme ?? 'light'].tint }}>Close</ThemedText>
+            </Pressable>
+          </View>
 
-          <View style={styles.rowButtons}>
+          {createError ? <ThemedText style={{ color: 'red' }}>{createError}</ThemedText> : null}
+
+          <View style={{ gap: 10 }}>
+            <View style={styles.fieldBlock}>
+              <ThemedText style={styles.fieldLabel}>AMOUNT TO EXCHANGE</ThemedText>
+              <View style={styles.amountRow}>
+                <View style={{ flex: 1 }}>
+                  <ThemedInput
+                    placeholder="e.g. 5,000"
+                    keyboardType="numeric"
+                    value={amount}
+                    onChangeText={setAmount}
+                  />
+                </View>
+                <View style={[styles.currencyPill, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+                  <ThemedText type="defaultSemiBold">{haveCurrency || filterHaveCurrency || '---'}</ThemedText>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.fieldBlock}>
+              <ThemedText style={styles.fieldLabel}>YOUR RATE</ThemedText>
+              <View style={styles.rateRow}>
+                <View style={{ flex: 1 }}>
+                  <ThemedInput
+                    placeholder="e.g. 22.81"
+                    keyboardType="numeric"
+                    value={preferredRate}
+                    onChangeText={setPreferredRate}
+                  />
+                </View>
+                <View style={[styles.currencyPill, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+                  <ThemedText type="defaultSemiBold">{needCurrency || filterNeedCurrency || '---'}</ThemedText>
+                </View>
+              </View>
+              {haveCurrency && needCurrency && preferredRate ? (
+                <ThemedText style={styles.marketRateLine}>
+                  1 {haveCurrency} ≈ {preferredRate} {needCurrency}
+                </ThemedText>
+              ) : null}
+            </View>
+
+            <View style={styles.fieldBlock}>
+              <ThemedText style={styles.fieldLabel}>NOTE (OPTIONAL)</ThemedText>
+              <ThemedInput
+                placeholder="Any special instructions..."
+                value={note}
+                onChangeText={setNote}
+              />
+            </View>
+
+            <View style={styles.fieldBlock}>
+              <ThemedText style={styles.fieldLabel}>CITY (OPTIONAL)</ThemedText>
+              <CitySelector
+                placeholder="City"
+                value={city}
+                onChange={setCity}
+                onSelectCity={(item) => {
+                  if (!haveCurrency) setHaveCurrency(item.currency);
+                }}
+              />
+            </View>
+
             <ThemedButton
-              title={
-                creatingBusy
-                  ? formMode === 'edit'
-                    ? 'Saving...'
-                    : 'Creating...'
-                  : formMode === 'edit'
-                    ? 'Save Changes'
-                    : 'Submit'
-              }
+              title={creatingBusy ? 'Posting...' : 'Post Exchange Request'}
               onPress={formMode === 'edit' ? handleUpdatePost : handleCreatePost}
               disabled={creatingBusy}
-              style={{ flex: 1, marginRight: 8 }}
-            />
-            <ThemedButton
-              title="Cancel"
-              variant="secondary"
-              onPress={closeForm}
-              disabled={creatingBusy}
-              style={{ flex: 1 }}
+              fullWidth
             />
           </View>
-        </ThemedView>
+        </AppCard>
       )}
 
       {busy && !loadedOnce && <ThemedText>Loading...</ThemedText>}
@@ -871,6 +926,7 @@ export default function CurrencyScreen() {
         </View>
       ) : (
         <View style={styles.list}>
+          <ThemedText type="subtitle" style={{ marginTop: 4 }}>My Requests</ThemedText>
           {filteredRequests.map((req) => (
             <View key={req.id}>{renderRequestItem({ item: req })}</View>
           ))}
@@ -903,9 +959,8 @@ export default function CurrencyScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: UI.spacing.lg,
-    paddingTop: UI.spacing.lg,
-    paddingBottom: UI.spacing.md,
+    paddingTop: UI.spacing.sm,
+    paddingBottom: UI.spacing.sm,
     gap: UI.spacing.md,
   },
   headerTopRow: {
@@ -939,6 +994,23 @@ const styles = StyleSheet.create({
   exchangeBlock: {
     gap: 8,
   },
+  exchangeReceiveRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: UI.spacing.md,
+  },
+  receiveAmountWrap: {
+    minWidth: 110,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    paddingBottom: 10,
+  },
+  receiveAmount: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '800',
+    color: '#1b8f3a',
+  },
   exchangeLabel: {
     fontSize: 11,
     lineHeight: 14,
@@ -963,6 +1035,37 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  marketRateRow: {
+    marginTop: UI.spacing.sm,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  marketRateLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  marketRateIcon: {
+    fontSize: 12,
+    lineHeight: 14,
+    opacity: 0.8,
+  },
+  marketRateLabel: {
+    fontSize: 12,
+    lineHeight: 14,
+    opacity: 0.8,
+  },
+  marketRateValue: {
+    fontSize: 12,
+    lineHeight: 14,
+    opacity: 0.9,
   },
   trendCard: {
     padding: UI.spacing.lg,
@@ -989,6 +1092,54 @@ const styles = StyleSheet.create({
   },
   primaryActionsRow: {
     gap: UI.spacing.sm,
+  },
+  requestFormCard: {
+    marginHorizontal: UI.spacing.lg,
+    marginBottom: UI.spacing.lg,
+    padding: UI.spacing.lg,
+    gap: UI.spacing.md,
+  },
+  requestFormHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  requestFormTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  fieldBlock: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    opacity: 0.65,
+    letterSpacing: 0.6,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  rateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  currencyPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  marketRateLine: {
+    fontSize: 12,
+    lineHeight: 14,
+    opacity: 0.75,
+    marginTop: 4,
   },
   filterButtons: {
     flexDirection: 'row',

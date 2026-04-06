@@ -63,7 +63,6 @@ export default function ParcelScreen() {
   const [viewMode, setViewMode] = useState<'trips' | 'requests'>('requests');
   
   const [trips, setTrips] = useState<ParcelTrip[]>([]);
-  const [requests, setRequests] = useState<ParcelRequest[]>([]);
   
   const [myTrips, setMyTrips] = useState<ParcelTrip[]>([]);
   const [myRequests, setMyRequests] = useState<ParcelRequest[]>([]);
@@ -89,11 +88,14 @@ export default function ParcelScreen() {
   
   // Request Form State
   const [reqItemType, setReqItemType] = useState('');
+  const [reqDescription, setReqDescription] = useState('');
   const [reqWeightKg, setReqWeightKg] = useState('');
+  const [reqValueAed, setReqValueAed] = useState('');
   const [reqFromCountry, setReqFromCountry] = useState<Country | undefined>(undefined);
   const [reqToCountry, setReqToCountry] = useState<Country | undefined>(undefined);
   const [reqFlexibleFromDate, setReqFlexibleFromDate] = useState<Date | undefined>(undefined);
   const [reqFlexibleToDate, setReqFlexibleToDate] = useState<Date | undefined>(undefined);
+  const [requestWizardStep, setRequestWizardStep] = useState<1 | 2 | 3>(1);
 
   const itemTypeOptions = parcelItemTypes as ParcelItemTypeOption[];
 
@@ -129,6 +131,31 @@ export default function ParcelScreen() {
   const [selectedRequestForDispute, setSelectedRequestForDispute] = useState<ParcelRequest | null>(null);
   const [disputeBusy, setDisputeBusy] = useState(false);
 
+  const categoryTiles = useMemo(() => {
+    const pick = (label: string) => {
+      const normalized = label.toLowerCase();
+      const found = itemTypeOptions.find((o) => o.label.toLowerCase() === normalized);
+      return found?.label ?? label;
+    };
+    return [
+      { label: 'Documents', value: pick('Documents'), background: '#EAF4FF', icon: 'doc.text' as const },
+      { label: 'Clothes', value: pick('Clothes'), background: '#F3EFFF', icon: 'tshirt' as const },
+      { label: 'Food', value: pick('Food'), background: '#FFF6E8', icon: 'fork.knife' as const },
+      { label: 'Electronics', value: pick('Electronics'), background: '#E9F7FF', icon: 'iphone' as const },
+      { label: 'Medicine', value: pick('Medicine'), background: '#FFEFF2', icon: 'pills' as const },
+      { label: 'Other', value: pick('Other'), background: '#F1F4F7', icon: 'cube' as const },
+    ];
+  }, [itemTypeOptions]);
+
+  const canGoStep2 = reqItemType.trim().length > 0;
+  const canGoStep3 =
+    reqItemType.trim().length > 0 &&
+    reqWeightKg.trim().length > 0 &&
+    reqFromCountry &&
+    reqToCountry &&
+    reqFlexibleFromDate &&
+    reqFlexibleToDate;
+
   const load = async () => {
     setBusy(true);
     setError(null);
@@ -154,9 +181,7 @@ export default function ParcelScreen() {
 
       // 3. Load Public Lists
       const tripsResult = await apiClient.listParcelTrips();
-      const requestsResult = await apiClient.listParcelRequests();
       const publicTrips = ((tripsResult as any).items ?? []) as ParcelTrip[];
-      const publicRequests = ((requestsResult as any).items ?? []) as ParcelRequest[];
 
       // 4. Merge Lists (My items + Public items, deduplicated)
       // Use Map to deduplicate by ID, keeping my items (with potentially different status)
@@ -168,24 +193,13 @@ export default function ParcelScreen() {
         }
       });
       
-      const mergedRequestsMap = new Map<string, ParcelRequest>();
-      myRequestsList.forEach(r => mergedRequestsMap.set(r.id, r));
-      publicRequests.forEach(r => {
-        if (!mergedRequestsMap.has(r.id)) {
-          mergedRequestsMap.set(r.id, r);
-        }
-      });
 
       // Sort Trips by departure date
       const allTrips = Array.from(mergedTripsMap.values()).sort((a, b) => 
         new Date(a.departureDate).getTime() - new Date(b.departureDate).getTime()
       );
       
-      // Requests: keep my requests at top (insertion order), others appended
-      const allRequests = Array.from(mergedRequestsMap.values());
-
       setTrips(allTrips);
-      setRequests(allRequests);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -232,12 +246,15 @@ export default function ParcelScreen() {
 
   const resetRequestForm = () => {
     setReqItemType('');
+    setReqDescription('');
     setReqFromCountry(undefined);
     setReqToCountry(undefined);
     setReqFlexibleFromDate(undefined);
     setReqFlexibleToDate(undefined);
     setReqWeightKg('');
+    setReqValueAed('');
     setEditingRequestId(null);
+    setRequestWizardStep(1);
     setShowRequestForm(false);
   };
 
@@ -363,6 +380,7 @@ export default function ParcelScreen() {
     setEditingTripId(null);
     setShowTripForm(false);
     setShowRequestForm(true);
+    setRequestWizardStep(2);
 
     setReqItemType(request.itemType);
     setReqWeightKg(String(request.weightKg));
@@ -670,7 +688,7 @@ export default function ParcelScreen() {
                         style={{ marginRight: 8 }}
                       />
                       <ThemedButton 
-                        title="Chat" 
+                        title="Connect" 
                         onPress={() => handleMessage(req.userId, undefined, req.id)} 
                         disabled={matchingBusy}
                         variant="secondary"
@@ -721,7 +739,7 @@ export default function ParcelScreen() {
            style={{ flex: 1, marginRight: 8 }}
          />
          <ThemedButton 
-           title="Chat" 
+           title="Connect" 
            onPress={() => handleMessage(item.userId)} 
            disabled={matchingBusy}
            variant="secondary"
@@ -775,7 +793,7 @@ export default function ParcelScreen() {
               style={{ marginRight: 8 }}
             />
             <ThemedButton 
-              title="Chat" 
+              title="Connect" 
               onPress={() => handleMessage(item.userId, undefined, item.id)} 
               disabled={matchingBusy}
               variant="secondary"
@@ -812,7 +830,7 @@ export default function ParcelScreen() {
                  <ThemedText style={{fontStyle: 'italic', color: '#666', marginRight: 8, alignSelf: 'center'}}>Waiting for acceptance...</ThemedText>
                  {chatTargetId && (
                    <ThemedButton 
-                     title="Chat" 
+                     title="Connect" 
                      onPress={() => handleMessage(chatTargetId, undefined, item.id)} 
                      disabled={matchingBusy}
                      variant="secondary"
@@ -836,7 +854,7 @@ export default function ParcelScreen() {
                   />
                   {chatTargetId && (
                     <ThemedButton 
-                      title="Chat" 
+                      title="Connect" 
                       onPress={() => handleMessage(chatTargetId, undefined, item.id)} 
                       disabled={matchingBusy}
                       variant="secondary"
@@ -868,7 +886,7 @@ export default function ParcelScreen() {
              />
              {chatTargetId && (
                <ThemedButton 
-                 title="Chat" 
+                 title="Connect" 
                  onPress={() => handleMessage(chatTargetId, undefined, item.id)} 
                  disabled={matchingBusy}
                  variant="secondary"
@@ -892,7 +910,7 @@ export default function ParcelScreen() {
              />
              {chatTargetId && (
                <ThemedButton 
-                 title="Chat" 
+                 title="Connect"
                  onPress={() => handleMessage(chatTargetId, undefined, item.id)} 
                  disabled={matchingBusy}
                  variant="secondary"
@@ -941,17 +959,6 @@ export default function ParcelScreen() {
     if (!filter) return true;
     return normalize(value ?? '').includes(normalize(filter));
   };
-
-  const filteredRequests = useMemo(() => {
-    return requests.filter((r) => {
-      if (filterMineOnly && myUserId && r.userId !== myUserId) return false;
-      if (!matchesCountryFilter(r.fromCountry, filterFromCountry)) return false;
-      if (!matchesCountryFilter(r.toCountry, filterToCountry)) return false;
-      if (!matchesTextFilter(r.itemType, filterItemType)) return false;
-      if (!matchesTextFilter(r.status, filterStatus)) return false;
-      return true;
-    });
-  }, [requests, filterMineOnly, myUserId, filterFromCountry, filterToCountry, filterItemType, filterStatus]);
 
   const filteredTrips = useMemo(() => {
     return trips.filter((t) => {
@@ -1077,13 +1084,17 @@ export default function ParcelScreen() {
             value={viewMode}
             options={[
               { value: 'trips', label: 'Find Travelers' },
-              { value: 'requests', label: 'Find Packages' },
+              { value: 'requests', label: 'Post Request' },
             ]}
             onChange={(v) => {
               setViewMode(v);
               if (v === 'trips') {
                 setShowRequestForm(false);
                 setShowTripForm(false);
+              } else {
+                resetRequestForm();
+                setShowTripForm(false);
+                setShowRequestForm(true);
               }
             }}
           />
@@ -1176,70 +1187,223 @@ export default function ParcelScreen() {
       )}
 
       {showRequestForm && (
-        <View style={styles.form}>
-          <ThemedText type="subtitle">
-            {editingRequestId ? 'Edit Request' : 'New Request'}
-          </ThemedText>
-          <ItemTypeSelector placeholder="Item type" value={reqItemType} onChange={setReqItemType} />
-          <ThemedInput placeholder="Weight (kg)" keyboardType="numeric" value={reqWeightKg} onChangeText={setReqWeightKg} />
-          <CountrySelector placeholder="From Country" value={reqFromCountry} onChange={setReqFromCountry} showDialCode={false} />
-          <CountrySelector placeholder="To Country" value={reqToCountry} onChange={setReqToCountry} showDialCode={false} />
-          <View style={styles.row}>
-             <View style={styles.flex1}>
-                <DateTimePickerInput placeholder="Flexible From" value={reqFlexibleFromDate || ''} onChange={setReqFlexibleFromDate} mode="date" minimumDate={new Date()} />
-             </View>
-             <View style={styles.spacer} />
-             <View style={styles.flex1}>
-                <DateTimePickerInput placeholder="Flexible To" value={reqFlexibleToDate || ''} onChange={setReqFlexibleToDate} mode="date" minimumDate={reqFlexibleFromDate || new Date()} />
-             </View>
+        <AppCard style={[styles.form, styles.wizardCard]}>
+          <View style={styles.wizardHeaderRow}>
+            <ThemedText type="defaultSemiBold" style={styles.wizardTitle}>
+              {editingRequestId ? 'Edit Request' : 'Post Request'}
+            </ThemedText>
+            <Pressable onPress={resetRequestForm} hitSlop={8}>
+              <ThemedText style={{ color: Colors[colorScheme ?? 'light'].tint }}>Close</ThemedText>
+            </Pressable>
           </View>
-          <View style={styles.row}>
-            <View style={styles.flex1}>
-              <ThemedButton
-                title={editingRequestId ? 'Save request' : 'Create request'}
-                onPress={handleCreateRequest}
-                disabled={creatingBusy || !reqItemType || !reqWeightKg || !reqFromCountry || !reqToCountry || !reqFlexibleFromDate || !reqFlexibleToDate}
-                fullWidth
-              />
-            </View>
-            <View style={styles.spacer} />
-            <View style={styles.flex1}>
-              <ThemedButton
-                title="Cancel"
-                variant="secondary"
-                onPress={resetRequestForm}
-                disabled={creatingBusy}
-                fullWidth
-              />
-            </View>
+
+          <View style={styles.stepperRow}>
+            {[1, 2, 3].map((s) => {
+              const active = s <= requestWizardStep;
+              return (
+                <View key={s} style={styles.stepperItem}>
+                  <View
+                    style={[
+                      styles.stepCircle,
+                      {
+                        backgroundColor: active ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].surface,
+                        borderColor: Colors[colorScheme ?? 'light'].border,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      type="defaultSemiBold"
+                      style={{ color: active ? '#fff' : Colors[colorScheme ?? 'light'].icon, fontSize: 12 }}
+                    >
+                      {s}
+                    </ThemedText>
+                  </View>
+                  <View style={[styles.stepLine, { backgroundColor: Colors[colorScheme ?? 'light'].border }]} />
+                </View>
+              );
+            })}
           </View>
-        </View>
+
+          <View style={styles.stepLabelsRow}>
+            <ThemedText style={styles.stepLabel}>Parcel</ThemedText>
+            <ThemedText style={styles.stepLabel}>Route</ThemedText>
+            <ThemedText style={styles.stepLabel}>Review</ThemedText>
+          </View>
+
+          {requestWizardStep === 1 ? (
+            <>
+              <ThemedText style={styles.sectionLabel}>WHAT ARE YOU SENDING?</ThemedText>
+              <View style={styles.categoryGrid}>
+                {categoryTiles.map((c) => {
+                  const selected = reqItemType === c.value;
+                  return (
+                    <Pressable
+                      key={c.label}
+                      onPress={() => setReqItemType(c.value)}
+                      style={({ pressed }) => [
+                        styles.categoryTile,
+                        {
+                          backgroundColor: c.background,
+                          borderColor: selected ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].border,
+                          opacity: pressed ? 0.85 : 1,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.categoryIcon, { backgroundColor: 'rgba(0,0,0,0.05)' }]}>
+                        <IconSymbol
+                          name={c.icon}
+                          size={18}
+                          color={selected ? Colors[colorScheme ?? 'light'].tint : Colors[colorScheme ?? 'light'].icon}
+                        />
+                      </View>
+                      <ThemedText
+                        type="defaultSemiBold"
+                        style={{ fontSize: 13 }}
+                        lightColor="#11181C"
+                        darkColor="#11181C"
+                      >
+                        {c.label}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={{ gap: 12, marginTop: UI.spacing.md }}>
+                <View style={styles.fieldBlock}>
+                  <ThemedText style={styles.fieldLabel}>PARCEL DESCRIPTION</ThemedText>
+                  <ThemedInput
+                    placeholder="Brief description of contents..."
+                    value={reqDescription}
+                    onChangeText={setReqDescription}
+                  />
+                </View>
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={styles.fieldLabel}>WEIGHT (KG)</ThemedText>
+                    <ThemedInput
+                      placeholder="e.g. 0.5"
+                      keyboardType="numeric"
+                      value={reqWeightKg}
+                      onChangeText={setReqWeightKg}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={styles.fieldLabel}>VALUE (AED)</ThemedText>
+                    <ThemedInput
+                      placeholder="e.g. 200"
+                      keyboardType="numeric"
+                      value={reqValueAed}
+                      onChangeText={setReqValueAed}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <ThemedButton
+                title="Next: Route Details"
+                onPress={() => setRequestWizardStep(2)}
+                disabled={!canGoStep2 || creatingBusy}
+                fullWidth
+                style={{ marginTop: UI.spacing.lg, backgroundColor: '#F08A1A', borderColor: '#F08A1A' }}
+              />
+            </>
+          ) : requestWizardStep === 2 ? (
+            <>
+              <ThemedText style={styles.sectionLabel}>ROUTE DETAILS</ThemedText>
+              <View style={{ gap: 12 }}>
+                <CountrySelector placeholder="From Country" value={reqFromCountry} onChange={setReqFromCountry} showDialCode={false} />
+                <CountrySelector placeholder="To Country" value={reqToCountry} onChange={setReqToCountry} showDialCode={false} />
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={styles.fieldLabel}>FLEXIBLE FROM</ThemedText>
+                    <DateTimePickerInput placeholder="Select" value={reqFlexibleFromDate || ''} onChange={setReqFlexibleFromDate} mode="date" minimumDate={new Date()} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={styles.fieldLabel}>FLEXIBLE TO</ThemedText>
+                    <DateTimePickerInput placeholder="Select" value={reqFlexibleToDate || ''} onChange={setReqFlexibleToDate} mode="date" minimumDate={reqFlexibleFromDate || new Date()} />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.twoColButtons}>
+                <ThemedButton
+                  title="Back"
+                  variant="secondary"
+                  onPress={() => setRequestWizardStep(1)}
+                  disabled={creatingBusy}
+                  style={{ flex: 1 }}
+                />
+                <ThemedButton
+                  title="Next: Review"
+                  onPress={() => setRequestWizardStep(3)}
+                  disabled={!canGoStep3 || creatingBusy}
+                  style={{ flex: 1, backgroundColor: '#F08A1A', borderColor: '#F08A1A' }}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <ThemedText style={styles.sectionLabel}>REVIEW</ThemedText>
+              <AppCard variant="soft" style={{ padding: UI.spacing.lg }}>
+                <View style={{ gap: 8 }}>
+                  <ThemedText type="defaultSemiBold">{reqItemType || '—'}</ThemedText>
+                  {reqDescription ? <ThemedText style={{ opacity: 0.8 }}>{reqDescription}</ThemedText> : null}
+                  <ThemedText style={{ opacity: 0.8 }}>
+                    Weight: {reqWeightKg || '—'} kg {reqValueAed ? `· Value: AED ${reqValueAed}` : ''}
+                  </ThemedText>
+                  <ThemedText style={{ opacity: 0.8 }}>
+                    Route: {reqFromCountry?.name || '—'} → {reqToCountry?.name || '—'}
+                  </ThemedText>
+                </View>
+              </AppCard>
+
+              <View style={styles.twoColButtons}>
+                <ThemedButton
+                  title="Back"
+                  variant="secondary"
+                  onPress={() => setRequestWizardStep(2)}
+                  disabled={creatingBusy}
+                  style={{ flex: 1 }}
+                />
+                <ThemedButton
+                  title={editingRequestId ? 'Save Request' : creatingBusy ? 'Posting...' : 'Post Request'}
+                  onPress={handleCreateRequest}
+                  disabled={!canGoStep3 || creatingBusy}
+                  style={{ flex: 1, backgroundColor: '#F08A1A', borderColor: '#F08A1A' }}
+                />
+              </View>
+            </>
+          )}
+        </AppCard>
       )}
 
-      <View style={styles.filterButtons}>
-        <ThemedButton
-          title={filtersVisible ? 'Hide filters' : 'Filters'}
-          variant="secondary"
-          onPress={() => setFiltersVisible((v) => !v)}
-          disabled={busy}
-          style={{ flex: 1, marginRight: 8 }}
-        />
-        <ThemedButton
-          title="Clear"
-          variant="secondary"
-          onPress={() => {
-            setFilterMineOnly(false);
-            setFilterFromCountry(undefined);
-            setFilterToCountry(undefined);
-            setFilterItemType('');
-            setFilterStatus('');
-          }}
-          disabled={busy}
-          style={{ width: 110 }}
-        />
-      </View>
+      {viewMode === 'trips' ? (
+        <View style={styles.filterButtons}>
+          <ThemedButton
+            title={filtersVisible ? 'Hide filters' : 'Filters'}
+            variant="secondary"
+            onPress={() => setFiltersVisible((v) => !v)}
+            disabled={busy}
+            style={{ flex: 1, marginRight: 8 }}
+          />
+          <ThemedButton
+            title="Clear"
+            variant="secondary"
+            onPress={() => {
+              setFilterMineOnly(false);
+              setFilterFromCountry(undefined);
+              setFilterToCountry(undefined);
+              setFilterItemType('');
+              setFilterStatus('');
+            }}
+            disabled={busy}
+            style={{ width: 110 }}
+          />
+        </View>
+      ) : null}
 
-      {filtersVisible && (
+      {viewMode === 'trips' && filtersVisible && (
         <View style={styles.form}>
           <View style={styles.filterRow}>
             <ThemedButton
@@ -1263,7 +1427,7 @@ export default function ParcelScreen() {
             showDialCode={false}
           />
           <ItemTypeSelector
-            placeholder={viewMode === 'requests' ? 'Item type' : 'Category'}
+            placeholder="Category"
             value={filterItemType}
             onChange={setFilterItemType}
           />
@@ -1275,16 +1439,7 @@ export default function ParcelScreen() {
         </View>
       )}
 
-      {viewMode === 'requests' ? (
-        <FlatList
-          data={filteredRequests}
-          keyExtractor={(item) => item.id}
-          renderItem={renderRequestItem}
-          scrollEnabled={false}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          ListEmptyComponent={<ThemedText style={styles.emptyText}>No parcel requests found.</ThemedText>}
-        />
-      ) : (
+      {viewMode === 'trips' ? (
         <FlatList
           data={filteredTrips}
           keyExtractor={(item) => item.id}
@@ -1293,6 +1448,20 @@ export default function ParcelScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={<ThemedText style={styles.emptyText}>No trips found.</ThemedText>}
         />
+      ) : (
+        <View style={{ marginTop: UI.spacing.md, marginHorizontal: UI.spacing.lg }}>
+          <ThemedText type="defaultSemiBold" style={{ marginBottom: UI.spacing.sm }}>
+            My Active Requests
+          </ThemedText>
+          <FlatList
+            data={myRequests.filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'accepted')}
+            keyExtractor={(item) => item.id}
+            renderItem={renderRequestItem}
+            scrollEnabled={false}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            ListEmptyComponent={<ThemedText style={styles.emptyText}>No active requests.</ThemedText>}
+          />
+        </View>
       )}
 
       <Modal
@@ -1399,9 +1568,8 @@ export default function ParcelScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: UI.spacing.lg,
-    paddingTop: UI.spacing.lg,
-    paddingBottom: UI.spacing.md,
+    paddingTop: UI.spacing.sm,
+    paddingBottom: UI.spacing.sm,
     gap: UI.spacing.md,
   },
   headerTopRow: {
@@ -1467,10 +1635,110 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   form: {
-    padding: 16,
-    gap: 16,
+    padding: UI.spacing.lg,
+    gap: UI.spacing.md,
+    borderRadius: UI.radius.lg,
+    marginHorizontal: UI.spacing.lg,
+    marginTop: UI.spacing.md,
+    marginBottom: UI.spacing.md,
+  },
+  wizardCard: {
+    padding: UI.spacing.lg,
+    gap: UI.spacing.md,
+  },
+  wizardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  wizardTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: UI.spacing.sm,
+  },
+  stepperItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepLine: {
+    flex: 1,
+    height: 2,
+    marginHorizontal: 8,
+    borderRadius: 2,
+  },
+  stepLabelsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  stepLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    opacity: 0.7,
+    width: '33%',
+    textAlign: 'center',
+  },
+  sectionLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    opacity: 0.65,
+    letterSpacing: 0.6,
+    marginTop: UI.spacing.sm,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: UI.spacing.md,
+    marginTop: UI.spacing.md,
+  },
+  categoryTile: {
+    width: '30.5%',
+    borderWidth: 1,
+    borderRadius: UI.radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  categoryIcon: {
+    width: 26,
+    height: 26,
     borderRadius: 8,
-    margin: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldBlock: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    opacity: 0.65,
+    letterSpacing: 0.6,
+  },
+  twoCol: {
+    flexDirection: 'row',
+    gap: UI.spacing.md,
+  },
+  twoColButtons: {
+    flexDirection: 'row',
+    gap: UI.spacing.md,
+    marginTop: UI.spacing.lg,
   },
   row: {
     flexDirection: 'row',
