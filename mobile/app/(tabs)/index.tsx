@@ -249,8 +249,8 @@ export default function HomeScreen() {
     setError(null);
     try {
       await apiClient.googleLogin(token, 'demo-device');
-      await handleLoadProfile(); // Refresh profile to get user info
-      router.replace('/currency');
+      const profile = await handleLoadProfile();
+      router.replace(profile?.isAdmin ? '/admin' : '/currency');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -283,7 +283,8 @@ export default function HomeScreen() {
         code,
         deviceFingerprint: 'demo-device',
       });
-      router.push('/currency');
+      const profile = await handleLoadProfile();
+      router.replace(profile?.isAdmin ? '/admin' : '/currency');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -297,8 +298,10 @@ export default function HomeScreen() {
     try {
       const profile = await apiClient.getMe();
       setMe(profile);
+      return profile;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setBusy(false);
     }

@@ -178,7 +178,12 @@ export default function OAuthRedirect() {
 
         setMessage('Signing into MuhajirOne…');
         await apiClient.googleLogin(idToken, 'demo-device');
-        router.replace('/currency');
+        try {
+          const profile = await apiClient.getMe();
+          router.replace(profile?.isAdmin ? '/admin' : '/currency');
+        } catch {
+          router.replace('/currency');
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         setMessage('Sign-in did not complete');

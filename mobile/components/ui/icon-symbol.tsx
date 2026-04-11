@@ -45,6 +45,17 @@ const MAPPING = {
   'rectangle.portrait.and.arrow.right': 'logout',
   airplane: 'flight-takeoff',
   calendar: 'event',
+  shield: 'shield',
+  'device.tablet': 'tablet',
+  'chart.bar.fill': 'bar-chart',
+  'person.2': 'groups',
+  'bolt.fill': 'bolt',
+  'exclamationmark.triangle.fill': 'report-problem',
+  'dollarsign.circle.fill': 'attach-money',
+  'arrow.down.circle': 'download',
+  'waveform.path.ecg': 'show-chart',
+  'person.badge.plus': 'person-add',
+  'person.crop.circle.badge.xmark': 'person-off',
 } as IconMapping;
 
 /**
