@@ -1,8 +1,9 @@
 import {
   BadRequestException,
   Injectable,
-  UnauthorizedException,
   Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes, createHash } from 'node:crypto';
@@ -234,14 +235,28 @@ export class AuthService {
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthTokens> {
-    const stored = await this.prisma.refreshToken.findUnique({
-      where: {
-        token: dto.refreshToken,
-      },
-      include: {
-        user: true,
-      },
-    });
+    let stored: {
+      revoked: boolean;
+      expiresAt: Date;
+      userId: string;
+      user: { phoneNumber: string };
+    } | null = null;
+    try {
+      stored = await this.prisma.refreshToken.findUnique({
+        where: {
+          token: dto.refreshToken,
+        },
+        include: {
+          user: true,
+        },
+      });
+    } catch (e) {
+      const code = e?.code as string | undefined;
+      if (code === 'P1001') {
+        throw new ServiceUnavailableException('Database unavailable');
+      }
+      throw e;
+    }
     if (!stored || stored.revoked || stored.expiresAt <= new Date()) {
       throw new UnauthorizedException('Invalid refresh token');
     }
