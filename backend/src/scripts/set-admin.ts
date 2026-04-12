@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 function loadEnv() {
   const envPath = path.join(__dirname, '..', '..', '.env');
@@ -34,7 +35,8 @@ function getPrisma(): PrismaClient {
       (connectionString.includes('?') ? '&' : '?') +
       'sslmode=require';
   }
-  const adapter = new PrismaPg({ connectionString });
+  const pool = new Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
 
@@ -52,23 +54,36 @@ async function main() {
   }
 
   const prisma = getPrisma();
-  const user = await prisma.user.findUnique({ where: { email } });
+  
+  let user = await prisma.user.findUnique({ where: { email } });
+  
   if (!user) {
-    throw new Error(`User not found for email: ${email}`);
+    console.log(`User not found for email: ${email}. Creating a new admin user...`);
+    user = await prisma.user.create({
+      data: {
+        email,
+        phoneNumber: `admin_placeholder_${Date.now()}`,
+        fullName: 'Admin User',
+        city: '',
+        corridor: '',
+        verificationLevel: 1,
+        isAdmin,
+      }
+    });
+  } else {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { isAdmin },
+    });
   }
-
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    data: { isAdmin },
-  });
 
   process.stdout.write(
     JSON.stringify(
       {
         ok: true,
-        id: updated.id,
-        email: updated.email,
-        isAdmin: updated.isAdmin,
+        id: user.id,
+        email: user.email,
+        isAdmin: user.isAdmin,
       },
       null,
       2,

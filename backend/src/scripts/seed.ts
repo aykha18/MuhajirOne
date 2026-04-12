@@ -9,6 +9,7 @@ import {
   ParcelRequest,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 function loadEnv() {
   const envPath = path.join(__dirname, '..', '..', '.env');
@@ -41,7 +42,8 @@ function getPrisma(): PrismaClient {
       (connectionString.includes('?') ? '&' : '?') +
       'sslmode=require';
   }
-  const adapter = new PrismaPg({ connectionString });
+  const pool = new Pool({ connectionString });
+  const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
 
