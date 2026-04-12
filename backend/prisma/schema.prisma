@@ -166,7 +166,9 @@ model ParcelRequest {
   tripId           String?
   matchInitiatedByUserId String?
   itemType         String
+  description      String?
   weightKg         Float
+  declaredValueAed Float?
   fromCountry      String
   toCountry        String
   flexibleFromDate DateTime

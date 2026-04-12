@@ -26,12 +26,12 @@ type AuthenticatedRequest = {
   };
 };
 
-@UseGuards(AuthGuard('jwt'))
 @Controller('parcel')
 export class ParcelController {
   constructor(private readonly parcelService: ParcelService) {}
 
   @Post('trips')
+  @UseGuards(AuthGuard('jwt'))
   createTrip(
     @Req() req: AuthenticatedRequest,
     @Body() dto: CreateParcelTripDto,
@@ -45,11 +45,13 @@ export class ParcelController {
   }
 
   @Get('trips/mine')
+  @UseGuards(AuthGuard('jwt'))
   listMyTrips(@Req() req: AuthenticatedRequest) {
     return this.parcelService.listMyTrips(req.user.id);
   }
 
   @Patch('trips/:id')
+  @UseGuards(AuthGuard('jwt'))
   updateTrip(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -59,16 +61,37 @@ export class ParcelController {
   }
 
   @Post('trips/:id/cancel')
+  @UseGuards(AuthGuard('jwt'))
   cancelTrip(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.parcelService.cancelTrip(req.user.id, id);
   }
 
   @Post('trips/:id/complete')
+  @UseGuards(AuthGuard('jwt'))
   completeTrip(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.parcelService.completeTrip(req.user.id, id);
   }
 
+  @Post('trips/:id/request')
+  @UseGuards(AuthGuard('jwt'))
+  requestTraveler(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') tripId: string,
+    @Body('itemType') itemType: string,
+    @Body('description') description: string,
+    @Body('weightKg') weightKg: number,
+    @Body('declaredValueAed') declaredValueAed: number,
+  ) {
+    return this.parcelService.requestTraveler(req.user.id, tripId, {
+      itemType,
+      description,
+      weightKg,
+      declaredValueAed,
+    });
+  }
+
   @Post('requests')
+  @UseGuards(AuthGuard('jwt'))
   createRequest(
     @Req() req: AuthenticatedRequest,
     @Body() dto: CreateParcelRequestDto,
@@ -82,11 +105,13 @@ export class ParcelController {
   }
 
   @Get('requests/mine')
+  @UseGuards(AuthGuard('jwt'))
   listMyRequests(@Req() req: AuthenticatedRequest) {
     return this.parcelService.listMyRequests(req.user.id);
   }
 
   @Patch('requests/:id')
+  @UseGuards(AuthGuard('jwt'))
   updateRequest(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -96,16 +121,19 @@ export class ParcelController {
   }
 
   @Post('requests/:id/cancel')
+  @UseGuards(AuthGuard('jwt'))
   cancelRequest(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.parcelService.cancelRequest(req.user.id, id);
   }
 
   @Post('requests/:id/complete')
+  @UseGuards(AuthGuard('jwt'))
   completeRequest(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.parcelService.completeRequest(req.user.id, id);
   }
 
   @Post('requests/:id/match')
+  @UseGuards(AuthGuard('jwt'))
   requestMatch(
     @Req() req: AuthenticatedRequest,
     @Param('id') requestId: string,
@@ -115,6 +143,7 @@ export class ParcelController {
   }
 
   @Post('requests/:id/accept')
+  @UseGuards(AuthGuard('jwt'))
   acceptMatch(
     @Req() req: AuthenticatedRequest,
     @Param('id') requestId: string,
@@ -123,6 +152,7 @@ export class ParcelController {
   }
 
   @Post('requests/:id/reject')
+  @UseGuards(AuthGuard('jwt'))
   rejectMatch(
     @Req() req: AuthenticatedRequest,
     @Param('id') requestId: string,

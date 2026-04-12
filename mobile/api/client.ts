@@ -140,7 +140,9 @@ export type UpdateParcelTripPayload = Partial<CreateParcelTripPayload>;
 
 export type CreateParcelRequestPayload = {
   itemType: string;
+  description?: string;
   weightKg: number;
+  declaredValueAed?: number;
   fromCountry: string;
   toCountry: string;
   flexibleFromDate: string;
@@ -410,6 +412,18 @@ export class ApiClient {
 
   async listMyParcelTrips() {
     return this.get('/parcel/trips/mine');
+  }
+
+  async requestTraveler(
+    tripId: string,
+    payload: {
+      itemType: string;
+      description?: string;
+      weightKg: number;
+      declaredValueAed?: number;
+    },
+  ) {
+    return this.post(`/parcel/trips/${tripId}/request`, payload);
   }
 
   async createParcelRequest(payload: CreateParcelRequestPayload) {
@@ -742,11 +756,21 @@ const extra = ((Constants as any)?.expoConfig?.extra ??
   (Constants as any)?.manifest2?.extra ??
   {}) as any;
 const configuredApiUrl =
-  extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL || undefined;
+  process.env.EXPO_PUBLIC_API_URL || extra?.apiUrl || undefined;
+
+const inferredLocalBaseUrl =
+  Platform.OS === 'web'
+    ? 'http://localhost:3000'
+    : Platform.OS === 'android' && !Constants.isDevice
+      ? 'http://10.0.2.2:3000'
+      : Platform.OS === 'ios' && !Constants.isDevice
+        ? 'http://localhost:3000'
+        : 'http://192.168.1.33:3000';
 
 const defaultBaseUrl =
-  configuredApiUrl ??
-  (Platform.OS === 'web' ? 'http://localhost:3000' : 'http://192.168.1.33:3000');
+  !Constants.isDevice && Platform.OS !== 'web'
+    ? inferredLocalBaseUrl
+    : configuredApiUrl ?? inferredLocalBaseUrl;
 
 export const API_URL = defaultBaseUrl;
 console.log('API URL:', API_URL);

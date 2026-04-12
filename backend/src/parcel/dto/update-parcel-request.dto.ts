@@ -14,9 +14,19 @@ export class UpdateParcelRequestDto {
   itemType?: string;
 
   @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  description?: string;
+
+  @IsOptional()
   @IsNumber()
   @Min(0.1)
   weightKg?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  declaredValueAed?: number;
 
   @IsOptional()
   @IsString()

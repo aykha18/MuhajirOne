@@ -87,6 +87,17 @@ export class ParcelService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.parcelTrip.findMany({
         where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              verificationLevel: true,
+              trustScore: true,
+              _count: { select: { parcelTrips: true } },
+            },
+          },
+        },
         orderBy: {
           departureDate: 'asc',
         },
@@ -105,6 +116,90 @@ export class ParcelService {
     };
   }
 
+  async requestTraveler(
+    userId: string,
+    tripId: string,
+    payload: {
+      itemType: unknown;
+      description: unknown;
+      weightKg: unknown;
+      declaredValueAed: unknown;
+    },
+  ) {
+    await this.validateUserEligibility(userId);
+
+    const itemType =
+      typeof payload.itemType === 'string' ? payload.itemType.trim() : '';
+    const description =
+      typeof payload.description === 'string' ? payload.description.trim() : '';
+    const weightKgRaw =
+      typeof payload.weightKg === 'number'
+        ? payload.weightKg
+        : typeof payload.weightKg === 'string'
+          ? Number(payload.weightKg)
+          : NaN;
+    const declaredValueAedRaw =
+      typeof payload.declaredValueAed === 'number'
+        ? payload.declaredValueAed
+        : typeof payload.declaredValueAed === 'string'
+          ? Number(payload.declaredValueAed)
+          : NaN;
+
+    if (itemType.length < 1 || itemType.length > 100) {
+      throw new BadRequestException('Invalid item type');
+    }
+    if (description.length > 500) {
+      throw new BadRequestException('Invalid description');
+    }
+    if (!Number.isFinite(weightKgRaw) || weightKgRaw < 0.1) {
+      throw new BadRequestException('Invalid weight');
+    }
+    if (Number.isFinite(declaredValueAedRaw) && declaredValueAedRaw < 0) {
+      throw new BadRequestException('Invalid declared value');
+    }
+
+    const trip = await this.prisma.parcelTrip.findUnique({
+      where: { id: tripId },
+    });
+    if (!trip || trip.deletedAt) {
+      throw new NotFoundException('Trip not found');
+    }
+    if (trip.status !== 'active') {
+      throw new BadRequestException('Trip is not active');
+    }
+    if (trip.userId === userId) {
+      throw new BadRequestException('Cannot request your own trip');
+    }
+    if (weightKgRaw > trip.maxWeightKg) {
+      throw new BadRequestException('Request weight exceeds trip capacity');
+    }
+    if (trip.departureDate <= new Date()) {
+      throw new BadRequestException('Trip has already departed');
+    }
+
+    const from = new Date(trip.departureDate.getTime() - 24 * 60 * 60 * 1000);
+    const to = new Date(trip.departureDate.getTime() + 24 * 60 * 60 * 1000);
+
+    const request = await this.prisma.parcelRequest.create({
+      data: {
+        userId,
+        itemType,
+        description: description.length ? description : null,
+        weightKg: weightKgRaw,
+        declaredValueAed: Number.isFinite(declaredValueAedRaw)
+          ? declaredValueAedRaw
+          : null,
+        fromCountry: trip.fromCountry,
+        toCountry: trip.toCountry,
+        flexibleFromDate: from,
+        flexibleToDate: to,
+        status: 'active',
+      },
+    });
+
+    return this.requestMatch(userId, request.id, tripId);
+  }
+
   async listMyTrips(userId: string) {
     await this.expireOldTrips();
     return this.prisma.parcelTrip.findMany({
@@ -112,7 +207,18 @@ export class ParcelService {
         userId,
       },
       include: {
-        parcelRequests: true,
+        parcelRequests: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                fullName: true,
+                verificationLevel: true,
+                trustScore: true,
+              },
+            },
+          },
+        },
       },
       orderBy: {
         departureDate: 'asc',
@@ -299,7 +405,9 @@ export class ParcelService {
       data: {
         userId,
         itemType: dto.itemType,
+        description: dto.description ?? undefined,
         weightKg: dto.weightKg,
+        declaredValueAed: dto.declaredValueAed ?? undefined,
         fromCountry: dto.fromCountry,
         toCountry: dto.toCountry,
         flexibleFromDate: from,
@@ -355,7 +463,9 @@ export class ParcelService {
       where: { id },
       data: {
         itemType: dto.itemType ?? undefined,
+        description: dto.description ?? undefined,
         weightKg: dto.weightKg ?? undefined,
+        declaredValueAed: dto.declaredValueAed ?? undefined,
         fromCountry: dto.fromCountry ?? undefined,
         toCountry: dto.toCountry ?? undefined,
         flexibleFromDate,

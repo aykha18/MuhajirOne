@@ -30,6 +30,15 @@ type ParcelTrip = {
   userId: string;
   status: string;
   requests?: ParcelRequest[];
+  user?: {
+    id: string;
+    fullName: string;
+    verificationLevel: number;
+    trustScore: number;
+    _count?: {
+      parcelTrips: number;
+    };
+  };
 };
 
 type TravelerTrip = ParcelTrip & {
@@ -50,11 +59,19 @@ type ParcelRequest = {
   flexibleFromDate: string;
   flexibleToDate: string;
   itemType: string;
+  description?: string;
   weightKg: number;
+  declaredValueAed?: number;
   userId: string;
   status: string;
   tripId?: string;
   matchInitiatedByUserId?: string;
+  user?: {
+    id: string;
+    fullName: string;
+    verificationLevel: number;
+    trustScore: number;
+  };
 };
 
 type ParcelItemTypeOption = {
@@ -156,6 +173,14 @@ export default function ParcelScreen() {
   const [disputeModalVisible, setDisputeModalVisible] = useState(false);
   const [selectedRequestForDispute, setSelectedRequestForDispute] = useState<ParcelRequest | null>(null);
   const [disputeBusy, setDisputeBusy] = useState(false);
+
+  const [requestTravelerModalVisible, setRequestTravelerModalVisible] = useState(false);
+  const [selectedTravelerTrip, setSelectedTravelerTrip] = useState<TravelerTrip | null>(null);
+  const [requestTravelerItemType, setRequestTravelerItemType] = useState('Documents');
+  const [requestTravelerDescription, setRequestTravelerDescription] = useState('');
+  const [requestTravelerWeightKg, setRequestTravelerWeightKg] = useState('1');
+  const [requestTravelerValueAed, setRequestTravelerValueAed] = useState('');
+  const [requestTravelerBusy, setRequestTravelerBusy] = useState(false);
 
   const seededTrips: TravelerTrip[] = useMemo(() => {
     const baseDate = new Date();
@@ -267,10 +292,10 @@ export default function ParcelScreen() {
     const mappedActual: TravelerTrip[] = trips.map((t, idx) => ({
       ...t,
       ui: {
-        travelerName: `Traveler ${idx + 1}`,
-        verified: false,
+        travelerName: t.user?.fullName?.trim().length ? t.user.fullName : `Traveler ${idx + 1}`,
+        verified: (t.user?.verificationLevel ?? 0) >= 2,
         rating: 4.7,
-        tripCount: 10,
+        tripCount: t.user?._count?.parcelTrips ?? 0,
         pricePerKgAed: 20,
         note: 'Available to carry small parcels.',
       },
@@ -338,24 +363,37 @@ export default function ParcelScreen() {
     setBusy(true);
     setError(null);
     try {
-      // 1. Get Me
       let currentUserId = myUserId;
-      if (!currentUserId) {
-        const me = await apiClient.getMe();
-        if ((me as any).id) {
-          currentUserId = (me as any).id;
-          setMyUserId(currentUserId);
+      if (!currentUserId && apiClient.getAccessToken()) {
+        try {
+          const me = await apiClient.getMe();
+          if ((me as any).id) {
+            currentUserId = (me as any).id;
+            setMyUserId(currentUserId);
+          }
+        } catch {
         }
       }
 
-      // 2. Load My Lists First (to ensure we have them)
-      const myTripsResult = await apiClient.listMyParcelTrips();
-      const myTripsList = ((myTripsResult as any) ?? []) as ParcelTrip[];
-      setMyTrips(myTripsList);
+      let myTripsList: ParcelTrip[] = [];
+      let myRequestsList: ParcelRequest[] = [];
+      if (currentUserId) {
+        const myTripsResult = await apiClient.listMyParcelTrips();
+        myTripsList = (((myTripsResult as any) ?? []) as ParcelTrip[]).map(
+          (t) => ({
+            ...t,
+            requests: ((t as any).parcelRequests ?? t.requests ?? []) as ParcelRequest[],
+          }),
+        );
+        setMyTrips(myTripsList);
 
-      const myRequestsResult = await apiClient.listMyParcelRequests();
-      const myRequestsList = ((myRequestsResult as any) ?? []) as ParcelRequest[];
-      setMyRequests(myRequestsList);
+        const myRequestsResult = await apiClient.listMyParcelRequests();
+        myRequestsList = ((myRequestsResult as any) ?? []) as ParcelRequest[];
+        setMyRequests(myRequestsList);
+      } else {
+        setMyTrips([]);
+        setMyRequests([]);
+      }
 
       // 3. Load Public Lists
       const tripsResult = await apiClient.listParcelTrips();
@@ -385,13 +423,103 @@ export default function ParcelScreen() {
     }
   };
 
+  const incomingRequests = useMemo(() => {
+    if (!myUserId) return [];
+    const tripIds = new Set(myTrips.map((t) => t.id));
+    const all = myTrips.flatMap((t) => (t.requests ?? []) as ParcelRequest[]);
+    return all
+      .filter((r) => !!r.tripId && tripIds.has(r.tripId) && r.userId !== myUserId)
+      .filter((r) => r.status === 'pending' || r.status === 'matched')
+      .sort((a, b) => new Date(b.flexibleFromDate).getTime() - new Date(a.flexibleFromDate).getTime());
+  }, [myTrips, myUserId]);
+
   useEffect(() => {
+    void load();
+  }, []);
+
+  const openCreateTravelerRequest = (trip: TravelerTrip) => {
+    setSelectedTravelerTrip(trip);
+    setRequestTravelerItemType('Documents');
+    setRequestTravelerDescription('');
+    setRequestTravelerWeightKg('1');
+    setRequestTravelerValueAed('');
+    setRequestTravelerModalVisible(true);
+  };
+
+  const openExistingRequestPicker = (trip: TravelerTrip) => {
+    const candidates = myRequests.filter((req) => {
+      if (req.status !== 'active') return false;
+      if (req.fromCountry !== trip.fromCountry || req.toCountry !== trip.toCountry) return false;
+      if (req.weightKg > trip.maxWeightKg) return false;
+      const tripDate = new Date(trip.departureDate);
+      const reqFrom = new Date(req.flexibleFromDate);
+      const reqTo = new Date(req.flexibleToDate);
+      reqFrom.setHours(0, 0, 0, 0);
+      reqTo.setHours(23, 59, 59, 999);
+      if (tripDate < reqFrom || tripDate > reqTo) return false;
+      return true;
+    });
+
+    if (candidates.length === 0) {
+      openCreateTravelerRequest(trip);
+      return;
+    }
+
+    setCandidateRequests(candidates);
+    setSelectedTripForMatching(trip);
+    setRequestModalTitle('Select Your Request');
+    setRequestModalVisible(true);
+  };
+
+  const submitRequestTraveler = async () => {
+    if (!selectedTravelerTrip) return;
     if (!apiClient.getAccessToken()) {
+      Alert.alert('Login required', 'Please login to request a traveler.');
       router.push('/');
       return;
     }
-    void load();
-  }, []);
+
+    const itemType = requestTravelerItemType.trim();
+    const description = requestTravelerDescription.trim();
+    const weightKg = Number(requestTravelerWeightKg);
+    const declaredValueAed = Number(requestTravelerValueAed);
+    if (itemType.length === 0) {
+      Alert.alert('Invalid', 'Please enter item type.');
+      return;
+    }
+    if (description.length > 500) {
+      Alert.alert('Invalid', 'Description is too long.');
+      return;
+    }
+    if (!Number.isFinite(weightKg) || weightKg <= 0) {
+      Alert.alert('Invalid', 'Please enter a valid weight.');
+      return;
+    }
+    if (requestTravelerValueAed.trim().length > 0) {
+      if (!Number.isFinite(declaredValueAed) || declaredValueAed < 0) {
+        Alert.alert('Invalid', 'Please enter a valid value.');
+        return;
+      }
+    }
+
+    setRequestTravelerBusy(true);
+    try {
+      await apiClient.requestTraveler(selectedTravelerTrip.id, {
+        itemType,
+        description: description.length ? description : undefined,
+        weightKg,
+        declaredValueAed: requestTravelerValueAed.trim().length ? declaredValueAed : undefined,
+      });
+      setRequestTravelerModalVisible(false);
+      setSelectedTravelerTrip(null);
+      Alert.alert('Requested', 'Request sent to the traveler.');
+      void load();
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : String(e));
+    } finally {
+      setRequestTravelerBusy(false);
+    }
+  };
 
   const findCountryByName = (name: string): Country | undefined => {
     const entry = (citiesData as any[]).find(
@@ -501,6 +629,12 @@ export default function ParcelScreen() {
       if (isNaN(weight) || weight < 0.1) {
         throw new Error('Weight must be at least 0.1 kg');
       }
+      if (reqValueAed.trim().length) {
+        const value = Number(reqValueAed);
+        if (isNaN(value) || value < 0) {
+          throw new Error('Value must be a valid number');
+        }
+      }
 
       const flexibleFrom = new Date(reqFlexibleFromDate);
       flexibleFrom.setHours(0, 0, 0, 0);
@@ -510,7 +644,9 @@ export default function ParcelScreen() {
 
       const payload = {
         itemType: reqItemType,
+        description: reqDescription.trim().length ? reqDescription.trim() : undefined,
         weightKg: weight,
+        declaredValueAed: reqValueAed.trim().length ? Number(reqValueAed) : undefined,
         fromCountry: reqFromCountry.name,
         toCountry: reqToCountry.name,
         flexibleFromDate: flexibleFrom.toISOString(),
@@ -561,7 +697,11 @@ export default function ParcelScreen() {
     setRequestWizardStep(2);
 
     setReqItemType(request.itemType);
+    setReqDescription(request.description ?? '');
     setReqWeightKg(String(request.weightKg));
+    setReqValueAed(
+      typeof request.declaredValueAed === 'number' ? String(request.declaredValueAed) : '',
+    );
     setReqFromCountry(findCountryByName(request.fromCountry));
     setReqToCountry(findCountryByName(request.toCountry));
     setReqFlexibleFromDate(new Date(request.flexibleFromDate));
@@ -605,52 +745,6 @@ export default function ParcelScreen() {
       setCandidateTrips(candidates);
       setSelectedRequestForMatching(request);
       setTripModalVisible(true);
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : String(e));
-    } finally {
-      setMatchingBusy(false);
-    }
-  };
-
-  const findRequestsForTrip = async (trip: ParcelTrip) => {
-    const isMyTrip = trip.userId === myUserId;
-
-    setMatchingBusy(true);
-    try {
-      let candidates: ParcelRequest[] = [];
-      if (isMyTrip) {
-        // Find public requests for my trip
-        const result = await apiClient.searchRequestsForTrip(trip.id);
-        candidates = (result as any) ?? [];
-        setRequestModalTitle('Matching Requests');
-      } else {
-        // Find my requests for public trip
-        candidates = myRequests.filter(req => {
-          if (req.status !== 'active') return false;
-          if (req.fromCountry !== trip.fromCountry || req.toCountry !== trip.toCountry) return false;
-          const tripDate = new Date(trip.departureDate);
-          const reqFrom = new Date(req.flexibleFromDate);
-          const reqTo = new Date(req.flexibleToDate);
-          
-          // Reset times for date-only comparison
-          reqFrom.setHours(0, 0, 0, 0);
-          reqTo.setHours(23, 59, 59, 999);
-          
-          if (tripDate < reqFrom || tripDate > reqTo) return false;
-          if (req.weightKg > trip.maxWeightKg) return false;
-          return true;
-        });
-        setRequestModalTitle('Select Your Request');
-      }
-
-      if (candidates.length === 0) {
-        Alert.alert('No Matches', 'No suitable requests found.');
-        return;
-      }
-
-      setCandidateRequests(candidates);
-      setSelectedTripForMatching(trip);
-      setRequestModalVisible(true);
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : String(e));
     } finally {
@@ -927,7 +1021,35 @@ export default function ParcelScreen() {
                       Alert.alert('Demo', 'This is seeded demo data. Create a real request to match.');
                       return;
                     }
-                    findRequestsForTrip(item);
+                    if (!apiClient.getAccessToken()) {
+                      Alert.alert('Login required', 'Please login to request a traveler.');
+                      router.push('/');
+                      return;
+                    }
+
+                    const hasExisting = myRequests.some((req) => {
+                      if (req.status !== 'active') return false;
+                      if (req.fromCountry !== item.fromCountry || req.toCountry !== item.toCountry) return false;
+                      if (req.weightKg > item.maxWeightKg) return false;
+                      const tripDate = new Date(item.departureDate);
+                      const reqFrom = new Date(req.flexibleFromDate);
+                      const reqTo = new Date(req.flexibleToDate);
+                      reqFrom.setHours(0, 0, 0, 0);
+                      reqTo.setHours(23, 59, 59, 999);
+                      if (tripDate < reqFrom || tripDate > reqTo) return false;
+                      return true;
+                    });
+
+                    if (hasExisting) {
+                      Alert.alert('Request traveler', 'Use an existing request or create a new one?', [
+                        { text: 'Use existing', onPress: () => openExistingRequestPicker(item) },
+                        { text: 'Create new', onPress: () => openCreateTravelerRequest(item) },
+                        { text: 'Cancel', style: 'cancel' },
+                      ]);
+                      return;
+                    }
+
+                    openCreateTravelerRequest(item);
                   }}
                   fullWidth
                   style={{ backgroundColor: '#F08A1A', borderColor: '#F08A1A' }}
@@ -1226,12 +1348,12 @@ export default function ParcelScreen() {
             <View style={{ flex: 1 }}>
               <ThemedText style={styles.summaryLabel} lightColor="#fff" darkColor="#fff">My Parcels</ThemedText>
               <ThemedText style={styles.summaryValue} lightColor="#fff" darkColor="#fff">
-                {myRequests.filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'accepted').length} Active Requests
+                {myRequests.filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'matched').length} Active Requests
               </ThemedText>
             </View>
             <View style={styles.summaryChips}>
               {myRequests
-                .filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'accepted')
+                .filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'matched')
                 .slice(0, 2)
                 .map((r) => (
                   <View key={r.id} style={styles.summaryChip}>
@@ -1589,10 +1711,22 @@ export default function ParcelScreen() {
       ) : (
         <View style={{ marginTop: UI.spacing.md }}>
           <ThemedText type="defaultSemiBold" style={{ marginBottom: UI.spacing.sm }}>
+            Incoming Requests
+          </ThemedText>
+          <FlatList
+            data={incomingRequests}
+            keyExtractor={(item) => item.id}
+            renderItem={renderRequestItem}
+            scrollEnabled={false}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            ListEmptyComponent={<ThemedText style={styles.emptyText}>No incoming requests.</ThemedText>}
+          />
+
+          <ThemedText type="defaultSemiBold" style={{ marginBottom: UI.spacing.sm }}>
             My Active Requests
           </ThemedText>
           <FlatList
-            data={myRequests.filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'accepted')}
+            data={myRequests.filter((r) => r.status === 'active' || r.status === 'pending' || r.status === 'matched')}
             keyExtractor={(item) => item.id}
             renderItem={renderRequestItem}
             scrollEnabled={false}
@@ -1603,13 +1737,130 @@ export default function ParcelScreen() {
       )}
 
       <Modal
+        visible={requestTravelerModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setRequestTravelerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ThemedView
+            style={[
+              styles.modalContent,
+              { backgroundColor: Colors[colorScheme ?? 'light'].background },
+            ]}
+          >
+            <ThemedText type="subtitle" style={styles.modalTitle}>Request This Traveler</ThemedText>
+            <ThemedText style={styles.modalSubtitle}>
+              {selectedTravelerTrip ? `${selectedTravelerTrip.fromCountry} ➡️ ${selectedTravelerTrip.toCountry}` : ''}
+            </ThemedText>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: UI.spacing.md }}>
+              {categoryTiles.map((tile) => {
+                const selected = requestTravelerItemType === tile.value;
+                const tileBackground = isDark
+                  ? Colors[colorScheme ?? 'light'].surface
+                  : tile.background;
+                const tileBorderColor = selected
+                  ? '#F08A1A'
+                  : Colors[colorScheme ?? 'light'].border;
+                const tileIconColor = isDark
+                  ? Colors[colorScheme ?? 'light'].icon
+                  : '#1A1A1A';
+                const tileTextColor = isDark
+                  ? Colors[colorScheme ?? 'light'].text
+                  : '#1A1A1A';
+                return (
+                  <Pressable
+                    key={tile.value}
+                    onPress={() => setRequestTravelerItemType(tile.value)}
+                    style={{ width: '30%' }}
+                  >
+                    <AppCard
+                      variant="soft"
+                      style={{
+                        paddingVertical: 14,
+                        paddingHorizontal: 10,
+                        alignItems: 'center',
+                        gap: 10,
+                        borderWidth: 1,
+                        borderColor: tileBorderColor,
+                        backgroundColor: tileBackground,
+                      }}
+                    >
+                      <IconSymbol name={tile.icon} size={18} color={tileIconColor} />
+                      <ThemedText type="defaultSemiBold" style={{ fontSize: 12, color: tileTextColor }}>
+                        {tile.label}
+                      </ThemedText>
+                    </AppCard>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={{ marginTop: UI.spacing.md, gap: 10 }}>
+              <ThemedText style={{ opacity: 0.75, fontSize: 12 }}>PARCEL DESCRIPTION</ThemedText>
+              <ThemedInput
+                placeholder="Brief description of contents..."
+                value={requestTravelerDescription}
+                onChangeText={setRequestTravelerDescription}
+              />
+            </View>
+
+            <View style={{ marginTop: UI.spacing.md }}>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1, gap: 10 }}>
+                  <ThemedText style={{ opacity: 0.75, fontSize: 12 }}>WEIGHT (KG)</ThemedText>
+                  <ThemedInput
+                    placeholder="e.g. 0.5"
+                    keyboardType="numeric"
+                    value={requestTravelerWeightKg}
+                    onChangeText={setRequestTravelerWeightKg}
+                  />
+                </View>
+                <View style={{ flex: 1, gap: 10 }}>
+                  <ThemedText style={{ opacity: 0.75, fontSize: 12 }}>VALUE (AED)</ThemedText>
+                  <ThemedInput
+                    placeholder="e.g. 200"
+                    keyboardType="numeric"
+                    value={requestTravelerValueAed}
+                    onChangeText={setRequestTravelerValueAed}
+                  />
+                </View>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: UI.spacing.md }}>
+              <ThemedButton
+                title="Cancel"
+                variant="secondary"
+                onPress={() => setRequestTravelerModalVisible(false)}
+                disabled={requestTravelerBusy}
+                style={{ flex: 1 }}
+              />
+              <ThemedButton
+                title={requestTravelerBusy ? 'Sending...' : 'Send Request'}
+                onPress={submitRequestTraveler}
+                disabled={requestTravelerBusy}
+                style={{ flex: 1, backgroundColor: '#F08A1A', borderColor: '#F08A1A' }}
+              />
+            </View>
+          </ThemedView>
+        </View>
+      </Modal>
+
+      <Modal
         visible={tripModalVisible}
         transparent={true}
         animationType="slide"
         onRequestClose={() => setTripModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <ThemedView style={styles.modalContent}>
+          <ThemedView
+            style={[
+              styles.modalContent,
+              { backgroundColor: Colors[colorScheme ?? 'light'].background },
+            ]}
+          >
             <ThemedText type="subtitle" style={styles.modalTitle}>{tripModalTitle}</ThemedText>
             <ThemedText style={styles.modalSubtitle}>Select a trip to match:</ThemedText>
             
@@ -1648,7 +1899,12 @@ export default function ParcelScreen() {
         onRequestClose={() => setRequestModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <ThemedView style={styles.modalContent}>
+          <ThemedView
+            style={[
+              styles.modalContent,
+              { backgroundColor: Colors[colorScheme ?? 'light'].background },
+            ]}
+          >
             <ThemedText type="subtitle" style={styles.modalTitle}>{requestModalTitle}</ThemedText>
             <ThemedText style={styles.modalSubtitle}>Select a request to match:</ThemedText>
             
@@ -2071,7 +2327,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: 'white',
     borderRadius: 12,
     padding: 20,
     maxHeight: '80%',
@@ -2083,7 +2338,7 @@ const styles = StyleSheet.create({
   modalSubtitle: {
     textAlign: 'center',
     marginBottom: 16,
-    color: '#666',
+    opacity: 0.75,
   },
   candidateList: {
     maxHeight: 300,

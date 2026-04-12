@@ -54,11 +54,13 @@ async function main() {
   }
 
   const prisma = getPrisma();
-  
+
   let user = await prisma.user.findUnique({ where: { email } });
-  
+
   if (!user) {
-    console.log(`User not found for email: ${email}. Creating a new admin user...`);
+    console.log(
+      `User not found for email: ${email}. Creating a new admin user...`,
+    );
     user = await prisma.user.create({
       data: {
         email,
@@ -68,7 +70,7 @@ async function main() {
         corridor: '',
         verificationLevel: 1,
         isAdmin,
-      }
+      },
     });
   } else {
     user = await prisma.user.update({

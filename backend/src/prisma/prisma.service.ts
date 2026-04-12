@@ -33,7 +33,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         await this.$connect();
         return;
       } catch (e) {
-        const code = (e as any)?.code as string | undefined;
+        const code = e?.code as string | undefined;
         if (attempt === maxAttempts) {
           throw e;
         }
